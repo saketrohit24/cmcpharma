@@ -1,0 +1,55 @@
+# FastAPI core dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# Pydantic for data validation
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Database (SQLAlchemy for future expansion)
+sqlalchemy==2.0.23
+alembic==1.13.1
+
+# File handling
+aiofiles==23.2.1
+python-multipart==0.0.6
+
+# Authentication (JWT)
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# HTTP requests for LLM APIs
+httpx==0.25.2
+requests==2.31.0
+
+# Document processing
+PyPDF2==3.0.1
+python-docx==1.1.0
+
+# LangChain for RAG
+langchain==0.1.0
+langchain-community==0.0.20
+langchain-nvidia-ai-endpoints==0.0.11
+
+# Vector embeddings and RAG
+numpy>=1.26.0
+sentence-transformers==2.2.2
+faiss-cpu==1.7.4
+
+# LLM API clients
+openai==1.6.1
+anthropic==0.8.1
+
+# Export functionality
+reportlab==4.0.8
+jinja2==3.1.2
+
+# Development and testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+
+# Logging
+structlog==23.2.0

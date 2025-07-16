@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom component classes using Tailwind */
+@layer components {
+  .regulatory-btn {
+    @apply px-4 py-2 rounded-md font-medium transition-colors duration-200;
+  }
+  
+  .regulatory-btn-primary {
+    @apply bg-red-500 text-white hover:bg-red-600;
+  }
+  
+  .regulatory-btn-secondary {
+    @apply bg-white text-gray-700 border border-gray-300 hover:bg-gray-50;
+  }
+  
+  .regulatory-card {
+    @apply bg-white rounded-lg border border-gray-200 shadow-sm;
+  }
+  
+  .regulatory-sidebar {
+    @apply w-64 bg-white border-r border-gray-200 overflow-y-auto;
+  }
+}

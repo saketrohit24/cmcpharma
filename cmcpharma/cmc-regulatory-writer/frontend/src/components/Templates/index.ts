@@ -1,0 +1,1 @@
+export { TemplateManagerPage } from './TemplateManagerPage';
