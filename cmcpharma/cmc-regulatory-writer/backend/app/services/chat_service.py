@@ -22,6 +22,7 @@ from app.models.chat import (
 )
 from app.services.generation_service import GenerationService
 from app.services.rag_service import RAGService
+from app.services.graph_rag_service import RAGConfig
 from app.core.config import settings
 
 
@@ -47,7 +48,25 @@ class ChatService:
         
         # Initialize related services
         self.generation_service = GenerationService()
-        self.rag_service = RAGService(file_paths=[])
+        
+        # Configure GraphRAG if enabled
+        graph_rag_config = None
+        if settings.USE_GRAPH_RAG:
+            graph_rag_config = RAGConfig(
+                working_dir=settings.GRAPH_RAG_WORKING_DIR,
+                chunk_size=settings.GRAPH_RAG_CHUNK_SIZE,
+                chunk_overlap=settings.GRAPH_RAG_CHUNK_OVERLAP,
+                embedding_batch_num=settings.GRAPH_RAG_EMBEDDING_BATCH_NUM,
+                max_async=settings.GRAPH_RAG_MAX_ASYNC,
+                global_max_consider_community=settings.GRAPH_RAG_GLOBAL_MAX_CONSIDER_COMMUNITY,
+                local_search_top_k=settings.GRAPH_RAG_LOCAL_SEARCH_TOP_K
+            )
+        
+        self.rag_service = RAGService(
+            file_paths=[], 
+            use_graph_rag=settings.USE_GRAPH_RAG,
+            graph_rag_config=graph_rag_config
+        )
         
         # Chat configuration
         self.max_history_length = 50

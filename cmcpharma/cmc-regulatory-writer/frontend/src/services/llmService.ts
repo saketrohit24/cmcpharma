@@ -212,6 +212,10 @@ Provide comprehensive, regulatory-compliant content for each section. Return as 
       ];
     }
   }
+
+  async generateText(prompt: string): Promise<string> {
+    return await this.callLLM(prompt);
+  }
 }
 
 export const llmService = LLMService.getInstance();

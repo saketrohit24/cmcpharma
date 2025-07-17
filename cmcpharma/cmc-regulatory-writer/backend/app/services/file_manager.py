@@ -32,3 +32,34 @@ class FileManager:
         if not os.path.isdir(self.session_dir):
             return []
         return [os.path.join(self.session_dir, f) for f in os.listdir(self.session_dir)]
+
+    def get_session_files(self) -> List[FileItem]:
+        """Returns a list of FileItem objects for all files in the session."""
+        files = []
+        if not os.path.isdir(self.session_dir):
+            return files
+        
+        for filename in os.listdir(self.session_dir):
+            file_path = os.path.join(self.session_dir, filename)
+            if os.path.isfile(file_path):
+                file_size = os.path.getsize(file_path)
+                files.append(FileItem(
+                    name=filename,
+                    size=file_size,
+                    mime_type=self._get_mime_type(filename),
+                    path=os.path.join(self.session_id, filename)
+                ))
+        return files
+
+    def _get_mime_type(self, filename: str) -> str:
+        """Simple mime type detection based on file extension."""
+        ext = filename.lower().split('.')[-1] if '.' in filename else ''
+        mime_types = {
+            'pdf': 'application/pdf',
+            'txt': 'text/plain',
+            'doc': 'application/msword',
+            'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'xls': 'application/vnd.ms-excel',
+            'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        }
+        return mime_types.get(ext, 'application/octet-stream')

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FileText, Upload, BookOpen, Clock, Plus, Settings, Wifi } from 'lucide-react';
 
 interface Tab {
@@ -7,18 +7,34 @@ interface Tab {
   active: boolean;
 }
 
+interface FileItem {
+  id: string;
+  name: string;
+  type: 'file' | 'folder';
+  children?: FileItem[];
+  expanded?: boolean;
+}
+
 interface HeaderProps {
   currentView?: 'editor' | 'files' | 'templates' | 'history' | 'connection-test';
   onViewChange?: (view: 'editor' | 'files' | 'templates' | 'history' | 'connection-test') => void;
   onNewDocument?: () => void;
   onOpenSettings?: () => void;
+  projectStructure?: FileItem[];
+  projectName?: string;
+  activeTabId?: string;
+  onTabChange?: (tabId: string) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
   currentView = 'editor', 
   onViewChange,
   onNewDocument,
-  onOpenSettings
+  onOpenSettings,
+  projectStructure = [],
+  projectName = "Regulatory Document Management",
+  activeTabId,
+  onTabChange
 }) => {
   const [tabs, setTabs] = useState<Tab[]>([
     { id: '1', title: 'Module 3.2.S - Drug Substance', active: true },
@@ -26,11 +42,43 @@ export const Header: React.FC<HeaderProps> = ({
     { id: '3', title: 'Specifications', active: false },
   ]);
 
+  // Generate tabs from project structure
+  useEffect(() => {
+    if (projectStructure && projectStructure.length > 0) {
+      const generateTabsFromStructure = (items: FileItem[]): Tab[] => {
+        const tabs: Tab[] = [];
+        
+        const addFileTabs = (items: FileItem[]) => {
+          items.forEach(item => {
+            if (item.type === 'file') {
+              tabs.push({
+                id: item.id,
+                title: item.name,
+                active: activeTabId ? item.id === activeTabId : tabs.length === 0
+              });
+            } else if (item.children) {
+              addFileTabs(item.children);
+            }
+          });
+        };
+        
+        addFileTabs(items);
+        return tabs;
+      };
+      
+      const newTabs = generateTabsFromStructure(projectStructure);
+      if (newTabs.length > 0) {
+        setTabs(newTabs);
+      }
+    }
+  }, [projectStructure, activeTabId]);
+
   const handleTabClick = (tabId: string) => {
     setTabs(tabs.map(tab => ({
       ...tab,
       active: tab.id === tabId
     })));
+    onTabChange?.(tabId);
   };
 
   const addNewTab = () => {
@@ -48,7 +96,7 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="header-left">
           <div className="doc-info">
             <div className="doc-id">Otsuka CMC Writer</div>
-            <div className="doc-title">Regulatory Document Management</div>
+            <div className="doc-title">{projectName}</div>
           </div>
           
           {/* Navigation */}

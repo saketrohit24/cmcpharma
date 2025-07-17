@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight, FileText, Folder } from 'lucide-react';
 
 interface FileItem {
@@ -9,8 +9,18 @@ interface FileItem {
   expanded?: boolean;
 }
 
-export const Sidebar: React.FC = () => {
-  const [fileStructure, setFileStructure] = useState<FileItem[]>([
+interface SidebarProps {
+  fileStructure?: FileItem[];
+  activeFileId?: string;
+  onFileSelect?: (fileId: string, fileName: string) => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ 
+  fileStructure: propFileStructure, 
+  activeFileId, 
+  onFileSelect 
+}) => {
+  const defaultFileStructure: FileItem[] = [
     {
       id: '1',
       name: 'Drug Substance',
@@ -33,16 +43,26 @@ export const Sidebar: React.FC = () => {
       expanded: false,
       children: []
     }
-  ]);
+  ];
+
+  const [fileStructure, setFileStructure] = useState<FileItem[]>(propFileStructure || defaultFileStructure);
+
+  // Update local state when prop changes
+  useEffect(() => {
+    if (propFileStructure) {
+      setFileStructure(propFileStructure);
+    }
+  }, [propFileStructure]);
 
   const toggleFolder = (folderId: string) => {
-    setFileStructure(files => 
-      files.map(file => 
-        file.id === folderId 
-          ? { ...file, expanded: !file.expanded }
-          : file
-      )
-    );
+    const toggleInStructure = (items: FileItem[]): FileItem[] => 
+      items.map(item => 
+        item.id === folderId 
+          ? { ...item, expanded: !item.expanded }
+          : { ...item, children: item.children ? toggleInStructure(item.children) : undefined }
+      );
+    
+    setFileStructure(toggleInStructure);
   };
 
   const renderFileItem = (item: FileItem, level: number = 0) => {
@@ -70,8 +90,9 @@ export const Sidebar: React.FC = () => {
     return (
       <div 
         key={item.id} 
-        className="file-item"
+        className={`file-item ${activeFileId === item.id ? 'active' : ''}`}
         style={{ paddingLeft: `${(level + 1) * 16}px` }}
+        onClick={() => onFileSelect?.(item.id, item.name)}
       >
         <FileText size={16} />
         <span>{item.name}</span>

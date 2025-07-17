@@ -1,5 +1,6 @@
 import React, { createContext, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
+import { backendApi } from '../services/backendApi';
 
 export interface UploadedFile {
   id: string;
@@ -9,6 +10,7 @@ export interface UploadedFile {
   uploadedAt: Date;
   category: 'specification' | 'protocol' | 'report' | 'certificate' | 'other';
   status: 'uploaded' | 'processing' | 'ready' | 'error';
+  backendPath?: string; // Path on backend for the uploaded file
 }
 
 export interface FileContextType {
@@ -55,7 +57,8 @@ export const FileProvider: React.FC<FileProviderProps> = ({ children }) => {
     return 'other';
   };
 
-  const addFiles = useCallback((newFiles: File[]) => {
+  const addFiles = useCallback(async (newFiles: File[]) => {
+    // Create local file entries immediately for UI feedback
     const uploadedFiles: UploadedFile[] = newFiles.map(file => ({
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       name: file.name,
@@ -68,20 +71,48 @@ export const FileProvider: React.FC<FileProviderProps> = ({ children }) => {
     
     setFiles(prev => [...prev, ...uploadedFiles]);
     
-    // Simulate processing
-    uploadedFiles.forEach(file => {
-      setTimeout(() => {
+    console.log('FileContext: Starting file upload with session ID:', backendApi.getSessionId());
+    
+    // Upload files to backend asynchronously
+    for (const [index, file] of newFiles.entries()) {
+      const localFile = uploadedFiles[index];
+      
+      try {
+        // Update status to processing
         setFiles(prev => prev.map(f => 
-          f.id === file.id ? { ...f, status: 'processing' } : f
+          f.id === localFile.id ? { ...f, status: 'processing' } : f
         ));
         
-        setTimeout(() => {
+        console.log(`FileContext: Uploading file ${file.name} to session ${backendApi.getSessionId()}`);
+        
+        // Upload to backend
+        const response = await backendApi.uploadFile(file);
+        
+        if (response.status === 200 && response.data) {
+          console.log(`FileContext: Successfully uploaded ${file.name}`, response.data);
+          // Update status to ready and store backend path
           setFiles(prev => prev.map(f => 
-            f.id === file.id ? { ...f, status: 'ready' } : f
+            f.id === localFile.id ? { 
+              ...f, 
+              status: 'ready',
+              backendPath: response.data?.path 
+            } : f
           ));
-        }, 1500);
-      }, 500);
-    });
+        } else {
+          console.error(`FileContext: Upload failed for ${file.name}:`, response.error);
+          // Handle upload error
+          setFiles(prev => prev.map(f => 
+            f.id === localFile.id ? { ...f, status: 'error' } : f
+          ));
+        }
+      } catch (error) {
+        console.error(`FileContext: Upload error for ${file.name}:`, error);
+        // Handle upload error
+        setFiles(prev => prev.map(f => 
+          f.id === localFile.id ? { ...f, status: 'error' } : f
+        ));
+      }
+    }
   }, []);
 
   const removeFile = useCallback((fileId: string) => {

@@ -16,6 +16,9 @@ class Template(BaseModel):
     name: str
     description: str = ""
     toc: List[TOCItem]
+    content: Optional[str] = None  # Store the actual content from uploaded files
+    source_file: Optional[str] = None  # Store the original filename
+    type: Optional[str] = "manual"  # 'manual' or 'uploaded'
 
 class TemplateCreationRequest(BaseModel):
     name: str

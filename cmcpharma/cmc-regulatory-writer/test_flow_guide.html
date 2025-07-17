@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CMC Regulatory Writer - Flow Test</title>
+    <style>
+        body { font-family: system-ui; margin: 20px; }
+        .test-step { margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 8px; }
+        .step-number { font-weight: bold; color: #3b82f6; }
+        .expected { background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 10px; margin: 10px 0; }
+        .pass { color: #059669; }
+        .fail { color: #dc2626; }
+        .link { color: #3b82f6; text-decoration: underline; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>🧪 CMC Regulatory Writer - Complete Flow Test</h1>
+    <p>Follow these steps to verify all the critical fixes are working:</p>
+
+    <div class="test-step">
+        <div class="step-number">Step 1: Open the Application</div>
+        <p>Navigate to: <span class="link" onclick="window.open('http://localhost:5179')">http://localhost:5179</span></p>
+        <div class="expected">
+            <strong>Expected:</strong> App loads with Header navigation and Project Structure sidebar
+        </div>
+    </div>
+
+    <div class="test-step">
+        <div class="step-number">Step 2: Go to Templates Tab</div>
+        <p>Click on "Template Manager" in the header navigation</p>
+        <div class="expected">
+            <strong>Expected:</strong> 
+            <ul>
+                <li>✅ Templates page loads</li>
+                <li>✅ Debug panel appears at top showing session info</li>
+                <li>✅ List of available templates</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-step">
+        <div class="step-number">Step 3: Switch to Session with Files</div>
+        <p>In the debug panel, click "Use Session with Files" button</p>
+        <div class="expected">
+            <strong>Expected:</strong>
+            <ul>
+                <li>✅ Session ID changes in debug panel</li>
+                <li>✅ Backend Files count shows 19 files</li>
+                <li>✅ Console logs "Found 19 backend files"</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-step">
+        <div class="step-number">Step 4: Generate Document</div>
+        <p>Select any template (e.g., "Module 3.2.S Drug Substance") and click "Generate Document"</p>
+        <div class="expected">
+            <strong>Expected:</strong>
+            <ul>
+                <li>✅ Page switches to Editor view</li>
+                <li>✅ Loading screen appears with progress bar</li>
+                <li>✅ "Generating content for [section]..." messages appear</li>
+                <li>✅ Completed sections show with ✅ checkmarks</li>
+                <li>✅ Toast notification shows success</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-step">
+        <div class="step-number">Step 5: Verify Project Structure Updates</div>
+        <p>Check the left sidebar "Project Structure"</p>
+        <div class="expected">
+            <strong>Expected:</strong>
+            <ul>
+                <li>✅ Project Structure shows generated document title</li>
+                <li>✅ Sections are listed and clickable</li>
+                <li>✅ First section is highlighted in blue (active)</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-step">
+        <div class="step-number">Step 6: Test Section Navigation</div>
+        <p>Click on different sections in the Project Structure</p>
+        <div class="expected">
+            <strong>Expected:</strong>
+            <ul>
+                <li>✅ Clicked section becomes highlighted in blue</li>
+                <li>✅ Editor header shows section title</li>
+                <li>✅ Editor content updates to show section content</li>
+                <li>✅ Content includes references to uploaded files</li>
+                <li>✅ AI-generated content is detailed and professional</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-step">
+        <div class="step-number">Step 7: Verify Content Quality</div>
+        <p>Check the generated content in each section</p>
+        <div class="expected">
+            <strong>Expected:</strong>
+            <ul>
+                <li>✅ Content is NOT placeholder text</li>
+                <li>✅ Content mentions specific uploaded PDF files</li>
+                <li>✅ Content is contextually relevant to section title</li>
+                <li>✅ References and citations are included</li>
+                <li>✅ Professional regulatory writing style</li>
+            </ul>
+        </div>
+    </div>
+
+    <h2>🎯 Key Fixes Implemented:</h2>
+    <ul>
+        <li>✅ <strong>Section Clickability:</strong> All sections in Project Structure are now clickable</li>
+        <li>✅ <strong>Active Section Highlighting:</strong> Selected section highlighted in blue</li>
+        <li>✅ <strong>Content Display:</strong> Editor shows content for selected section</li>
+        <li>✅ <strong>Project Structure Sync:</strong> Structure updates when document is generated</li>
+        <li>✅ <strong>Real Content Generation:</strong> AI generates content using uploaded files</li>
+        <li>✅ <strong>Progress Feedback:</strong> Loading states and progress tracking</li>
+        <li>✅ <strong>Session Management:</strong> Consistent session ID across all components</li>
+    </ul>
+
+    <h2>🚨 If Any Step Fails:</h2>
+    <ol>
+        <li>Check browser console for error messages</li>
+        <li>Verify backend is running on port 8001</li>
+        <li>Verify frontend is running on port 5179</li>
+        <li>Ensure session has uploaded files (use debug panel)</li>
+    </ol>
+
+    <p><strong>The flow should now work end-to-end!</strong> Users can upload files, generate documents, and navigate sections seamlessly.</p>
+</body>
+</html>

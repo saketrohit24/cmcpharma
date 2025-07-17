@@ -2,7 +2,7 @@
  * API client for connecting to the CMC Regulatory Writer Backend
  */
 
-const API_BASE_URL = 'http://localhost:8000/api';
+const API_BASE_URL = 'http://localhost:8001/api';
 
 export interface ApiResponse<T> {
   data?: T;

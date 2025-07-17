@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .endpoints import files, templates, generation, export, chat
+from .endpoints import files, templates, generation, export, chat, documents
 
 app = FastAPI(
     title="Medical Regulatory Writing API",
@@ -34,6 +34,7 @@ app.include_router(templates.router, prefix="/api/templates", tags=["Template Ma
 app.include_router(generation.router, prefix="/api/generation", tags=["Document Generation"])
 app.include_router(export.router, prefix="/api/export", tags=["Export"])
 app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
+app.include_router(documents.router, prefix="/api/documents", tags=["Document Management"])
 
 @app.get("/api/health", tags=["Health Check"])
 def health_check():

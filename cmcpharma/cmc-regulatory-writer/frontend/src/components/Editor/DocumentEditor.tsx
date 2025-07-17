@@ -21,12 +21,20 @@ interface DocumentEditorProps {
   sections?: Section[];
   citations?: Citation[];
   isGenerating?: boolean;
+  generationProgress?: {
+    currentSection: string;
+    completedSections: string[];
+    totalSections: number;
+  } | null;
+  activeTabId?: string;
 }
 
 export const DocumentEditor: React.FC<DocumentEditorProps> = ({ 
   sections = [], 
   citations = [],
-  isGenerating = false
+  isGenerating = false,
+  generationProgress = null,
+  activeTabId
 }) => {
   const defaultSections: Section[] = [
     {
@@ -37,15 +45,115 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     }
   ];
 
+  // Use generated sections if available, otherwise show default
   const sectionsToRender = sections.length > 0 ? sections : defaultSections;
+  
+  console.log('DocumentEditor render:', {
+    sectionsAvailable: sections.length,
+    isGenerating,
+    activeTabId,
+    sectionsToRender: sectionsToRender.length
+  });
+
+  // Find the active section to display using improved matching
+  let activeSection: Section | null = null;
+  if (activeTabId) {
+    // Enhanced section matching strategies with better logging
+    console.log('🔍 Looking for section with activeTabId:', activeTabId);
+    console.log('📋 Available sections:', sectionsToRender.map(s => ({ id: s.id, title: s.title })));
+    
+    activeSection = sectionsToRender.find(section => {
+      // Direct ID match (highest priority)
+      if (section.id === activeTabId) {
+        console.log('✅ Found direct ID match:', section.title);
+        return true;
+      }
+      
+      // Direct title match
+      if (section.title === activeTabId) {
+        console.log('✅ Found direct title match:', section.title);
+        return true;
+      }
+      
+      // Title contains activeTabId (case insensitive)
+      if (section.title.toLowerCase().includes(activeTabId.toLowerCase())) {
+        console.log('✅ Found title contains match:', section.title);
+        return true;
+      }
+      
+      // ActiveTabId contains section title (for nested matches)
+      if (activeTabId.toLowerCase().includes(section.title.toLowerCase())) {
+        console.log('✅ Found activeTabId contains match:', section.title);
+        return true;
+      }
+      
+      // Clean title matching (remove numbers, special chars, extra whitespace)
+      const cleanSectionTitle = section.title.replace(/^\d+\.?\s*/, '').trim().toLowerCase();
+      const cleanActiveId = activeTabId.replace(/^\d+\.?\s*/, '').trim().toLowerCase();
+      if (cleanSectionTitle === cleanActiveId) {
+        console.log('✅ Found clean title match:', section.title);
+        return true;
+      }
+      
+      return false;
+    }) || null;
+    
+    if (!activeSection) {
+      console.log('❌ No section found for activeTabId:', activeTabId);
+    }
+  }
+
+  // If no active section found and we have sections, show the first one
+  if (!activeSection && sectionsToRender.length > 0) {
+    activeSection = sectionsToRender[0];
+  }
+
+  console.log('📋 DocumentEditor state:', {
+    sectionsCount: sectionsToRender.length,
+    activeTabId,
+    foundSection: activeSection?.title || 'None',
+    availableSections: sectionsToRender.map(s => s.title)
+  });
 
   if (isGenerating) {
     return (
       <div className="document-editor">
-        <div className="document-loading">
-          <div className="loading-spinner"></div>
-          <h2>Generating Document...</h2>
-          <p>Creating content from template. This may take a few moments.</p>
+        <div className="document-loading p-8 text-center">
+          <div className="loading-spinner mx-auto mb-4"></div>
+          <h2 className="text-xl font-semibold text-gray-700 mb-2">Generating Document...</h2>
+          {generationProgress ? (
+            <div className="generation-progress">
+              <div className="mb-4">
+                <p className="text-gray-600"><strong>Current:</strong> {generationProgress.currentSection}</p>
+                <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ 
+                      width: `${(generationProgress.completedSections.length / generationProgress.totalSections) * 100}%` 
+                    }}
+                  ></div>
+                </div>
+                <p className="text-sm text-gray-500 mt-1">
+                  {generationProgress.completedSections.length} of {generationProgress.totalSections} sections completed
+                </p>
+              </div>
+              {generationProgress.completedSections.length > 0 && (
+                <div className="completed-sections text-left">
+                  <h4 className="font-medium text-gray-700 mb-2">Completed Sections:</h4>
+                  <ul className="text-sm text-gray-600 space-y-1">
+                    {generationProgress.completedSections.map((section, index) => (
+                      <li key={index} className="flex items-center">
+                        <span className="text-green-500 mr-2">✅</span>
+                        {section}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-gray-500">Creating content from template. This may take a few moments.</p>
+          )}
         </div>
       </div>
     );
@@ -54,7 +162,9 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   return (
     <main className="content">
       <div className="content-header">
-        <h1 className="content-title">Drug Substance Specifications</h1>
+        <h1 className="content-title">
+          {activeSection ? activeSection.title : 'Document Editor'}
+        </h1>
         <div className="content-actions">
           <button className="icon-btn">↶</button>
           <button className="icon-btn">↷</button>
@@ -67,40 +177,41 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         </div>
       </div>
       
-      {sectionsToRender.map(section => (
-        <div key={section.id}>
-          <h2 className="subtitle">{section.title}</h2>
-          {section.type === 'table' ? (
+      {activeSection ? (
+        <div className="section-container">
+          {activeSection.type === 'table' ? (
             <SpecificationTable />
           ) : (
-            <TextWithCitations content={section.content} citations={citations} />
+            <div className="section-content">
+              <TextWithCitations content={activeSection.content} citations={citations} />
+            </div>
           )}
         </div>
-      ))}
-      
-      <SpecificationTable />
-      
-      <p className="reference">
-        Reference: <a href="#">ICH Q6A</a>
-      </p>
-      
-      <div className="section">
-        <h3 className="section-title">Justification of Specifications:</h3>
-        <p className="section-content">
-          The specifications for the drug substance have been established based on the manufacturing process capability, 
-          stability data, and regulatory requirements. All tests and acceptance criteria are in accordance with 
-          ICH Q6A guidelines and current pharmacopeial standards.
-        </p>
-      </div>
-      
-      <div className="section">
-        <h3 className="section-title">Analytical Procedures:</h3>
-        <ul>
-          <li>Detailed analytical procedures are provided in Section 3.2.S.4.2</li>
-          <li>All methods have been validated according to ICH Q2(R1)</li>
-          <li>System suitability criteria are defined for each chromatographic method</li>
-        </ul>
-      </div>
+      ) : (
+        <div className="no-content">
+          <div className="text-center p-8">
+            {sectionsToRender.length > 0 ? (
+              <div>
+                <h3 className="text-lg font-medium text-gray-700 mb-2">Select a Section</h3>
+                <p className="text-gray-500">Click on a section from the Project Structure to view its content.</p>
+                <div className="mt-4">
+                  <p className="text-sm text-gray-400">Available sections:</p>
+                  <ul className="text-sm text-gray-600 mt-2">
+                    {sectionsToRender.map(section => (
+                      <li key={section.id}>• {section.title}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <h3 className="text-lg font-medium text-gray-700 mb-2">No Content Available</h3>
+                <p className="text-gray-500">Please generate a document from a template or upload content.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </main>
   );
 };

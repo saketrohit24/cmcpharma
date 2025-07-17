@@ -115,7 +115,7 @@ class ChatService {
         include_citations: false
       };
 
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/chat/message/stream`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8001'}/api/chat/message/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

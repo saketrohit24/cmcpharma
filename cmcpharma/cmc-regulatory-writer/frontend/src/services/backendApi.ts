@@ -25,6 +25,27 @@ export interface TemplateCreationRequest {
   toc_text: string;
 }
 
+export interface TemplateStructure {
+  id: string;
+  name: string;
+  description: string;
+  type: string;
+  sections: TemplateSection[];
+}
+
+export interface TemplateSection {
+  id: string;
+  title: string;
+  level: number;
+  children: TemplateSection[];
+}
+
+export interface TemplateUpdateRequest {
+  name?: string;
+  description?: string;
+  toc?: TOCItem[];
+}
+
 export interface FileItem {
   id: string;
   name: string;
@@ -139,6 +160,39 @@ export class BackendApiService {
   // Template Management
   async parseTemplate(request: TemplateCreationRequest): Promise<ApiResponse<Template>> {
     return apiClient.post<Template>('/templates/parse', request);
+  }
+
+  async getTemplates(): Promise<ApiResponse<Template[]>> {
+    return apiClient.get<Template[]>('/templates');
+  }
+
+  async getTemplate(templateId: string): Promise<ApiResponse<Template>> {
+    return apiClient.get<Template>(`/templates/${templateId}`);
+  }
+
+  async saveTemplate(template: Template): Promise<ApiResponse<Template>> {
+    return apiClient.post<Template>('/templates', template);
+  }
+
+  async updateTemplate(templateId: string, templateData: TemplateUpdateRequest): Promise<ApiResponse<Template>> {
+    return apiClient.put<Template>(`/templates/${templateId}`, templateData);
+  }
+
+  async deleteTemplate(templateId: string): Promise<ApiResponse<void>> {
+    return apiClient.delete<void>(`/templates/${templateId}`);
+  }
+
+  async uploadTemplateFile(file: File, name?: string, description?: string): Promise<ApiResponse<Template>> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (name) formData.append('name', name);
+    if (description) formData.append('description', description);
+    
+    return apiClient.postFormData<Template>('/templates/upload', formData);
+  }
+
+  async getTemplateStructure(templateId: string): Promise<ApiResponse<TemplateStructure>> {
+    return apiClient.get<TemplateStructure>(`/templates/structure/${templateId}`);
   }
 
   // Document Generation
