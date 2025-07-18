@@ -53,6 +53,9 @@ export const RightPanel: React.FC<RightPanelProps> = ({
     hasOnEditSection: !!onEditSection
   });
   
+  // Log all sections for debugging
+  console.log('📋 RightPanel: All sections:', sections.map(s => ({ id: s.id, title: s.title })));
+  
   const [activeTab, setActiveTab] = useState<'actions' | 'chat' | 'export'>('actions');
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   
