@@ -66,37 +66,64 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   const [sessionId] = useState(() => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
   const [lastSelection, setLastSelection] = useState<string>('');
 
-  // Track text selection
+  // Track text selection with more robust detection
   React.useEffect(() => {
     const handleSelectionChange = () => {
       const selection = window.getSelection();
       const selectionText = selection ? selection.toString().trim() : '';
-      if (selectionText.length > 0) {
+      if (selectionText.length > 0 && selection) {
+        // Store both the text and the selection range for later use
         setLastSelection(selectionText);
-        console.log('🔄 RightPanel: Selection saved:', selectionText);
-        console.log('🔄 RightPanel: Selection range:', selection?.getRangeAt(0));
+        // Also store the range information for more precise replacement
+        if (selection.rangeCount > 0) {
+          // Store range data in session storage as backup
+          sessionStorage.setItem('lastSelectedText', selectionText);
+          sessionStorage.setItem('lastSelectionValid', 'true');
+          // For large selections, also store additional metadata
+          if (selectionText.length > 100) {
+            sessionStorage.setItem('lastSelectionLength', selectionText.length.toString());
+            sessionStorage.setItem('lastSelectionWords', selectionText.split(' ').length.toString());
+          }
+        }
+        console.log('🔄 RightPanel: Selection saved:', selectionText.length > 100 ? 
+          `${selectionText.substring(0, 100)}... (${selectionText.length} chars)` : selectionText);
       }
     };
 
-    document.addEventListener('selectionchange', handleSelectionChange);
-    
-    // Also add mouseup event for better selection detection
     const handleMouseUp = () => {
+      // Additional selection capture on mouse up - with longer delay for large selections
       setTimeout(() => {
         const selection = window.getSelection();
         const selectionText = selection ? selection.toString().trim() : '';
         if (selectionText.length > 0) {
           setLastSelection(selectionText);
-          console.log('🔄 RightPanel: Selection saved on mouseup:', selectionText);
+          sessionStorage.setItem('lastSelectedText', selectionText);
+          sessionStorage.setItem('lastSelectionValid', 'true');
+          if (selectionText.length > 100) {
+            sessionStorage.setItem('lastSelectionLength', selectionText.length.toString());
+            sessionStorage.setItem('lastSelectionWords', selectionText.split(' ').length.toString());
+          }
+          console.log('🔄 RightPanel: Mouse up selection saved:', selectionText.length > 100 ? 
+            `${selectionText.substring(0, 100)}... (${selectionText.length} chars)` : selectionText);
         }
-      }, 10);
+      }, 50); // Longer delay to ensure selection is finalized, especially for large selections
     };
 
+    // Also capture selection on mousedown to catch the start of selection
+    const handleMouseDown = () => {
+      // Clear any previous selection data when starting new selection
+      sessionStorage.removeItem('lastSelectedText');
+      sessionStorage.removeItem('lastSelectionValid');
+    };
+
+    document.addEventListener('selectionchange', handleSelectionChange);
     document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('mousedown', handleMouseDown);
     
     return () => {
       document.removeEventListener('selectionchange', handleSelectionChange);
       document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mousedown', handleMouseDown);
     };
   }, []);
   
@@ -173,16 +200,24 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   };
 
   // Handle suggest edit button click
-  const handleSuggestEditClick = () => {
-    console.log('🔄 RightPanel: handleSuggestEditClick called');
-    console.log('🔄 RightPanel: activeTabId:', activeTabId);
-    console.log('🔄 RightPanel: sections:', sections);
-    console.log('🔄 RightPanel: editedSections:', editedSections);
+  const handleSuggestEditClick = (e: React.MouseEvent) => {
+    // Prevent any interference with selection
+    e.preventDefault();
+    e.stopPropagation();
     
-    // Immediately capture selection before it can be cleared
+    console.log('🔄 RightPanel: handleSuggestEditClick called');
+    
+    // Immediately capture selection before anything else
     const selection = window.getSelection();
     const immediateSelectionText = selection ? selection.toString().trim() : '';
+    
+    // Also try to get selection from session storage as backup
+    const backupSelectionText = sessionStorage.getItem('lastSelectedText') || '';
+    const isBackupValid = sessionStorage.getItem('lastSelectionValid') === 'true';
+    
     console.log('🔄 RightPanel: Immediate selection text:', immediateSelectionText);
+    console.log('🔄 RightPanel: Backup selection text:', backupSelectionText);
+    console.log('🔄 RightPanel: Saved selection text:', lastSelection);
     
     // If no sections, show an error
     if (!sections || sections.length === 0) {
@@ -206,41 +241,87 @@ export const RightPanel: React.FC<RightPanelProps> = ({
     
     // Get the current content (edited or original)
     const currentContent = editedSections[activeSection.id] || activeSection.content;
-    console.log('🔄 RightPanel: currentContent:', currentContent);
+    console.log('🔄 RightPanel: currentContent length:', currentContent.length);
     
-    // Check for text selection - prioritize immediate selection, then saved selection
-    const selectionText = immediateSelectionText || lastSelection;
+    // Use the best available selection text (priority: immediate > backup > saved)
+    let selectionText = immediateSelectionText;
+    if (!selectionText && isBackupValid) {
+      selectionText = backupSelectionText;
+    }
+    if (!selectionText) {
+      selectionText = lastSelection;
+    }
+    
     const hasSelection = selectionText.length > 0;
     
-    console.log('🔄 RightPanel: Immediate selection text:', immediateSelectionText);
-    console.log('🔄 RightPanel: Last saved selection:', lastSelection);
     console.log('🔄 RightPanel: Final selection text:', selectionText);
     console.log('🔄 RightPanel: Has selection:', hasSelection);
+    console.log('🔄 RightPanel: Selection length:', selectionText.length);
     
-    if (hasSelection) {
-      // User has selected text - verify it exists in current content
-      if (currentContent.includes(selectionText)) {
-        setSuggestEditContent(selectionText);
-        setSuggestEditContentType('selected');
-        console.log('🔄 RightPanel: Set content type to SELECTED');
-        console.log('🔄 RightPanel: Selected content:', selectionText);
-        // Clear the last selection since we're using it
-        setLastSelection('');
-      } else {
-        // Selection doesn't exist in current content, fall back to section edit
-        console.log('⚠️ Selected text not found in current content, falling back to section edit');
-        console.log('⚠️ Looking for:', selectionText);
-        console.log('⚠️ In content:', currentContent);
-        setSuggestEditContent(currentContent);
-        setSuggestEditContentType('section');
-        setLastSelection('');
+    // Clear the backup selection
+    sessionStorage.removeItem('lastSelectedText');
+    sessionStorage.removeItem('lastSelectionValid');
+    
+    // More robust selection validation for large paragraphs
+    const isSelectionValid = (selection: string, content: string): boolean => {
+      if (!selection || selection.length === 0) return false;
+      
+      // Normalize both strings for comparison (remove extra whitespace, line breaks)
+      const normalizeText = (text: string) => text.replace(/\s+/g, ' ').trim();
+      const normalizedSelection = normalizeText(selection);
+      const normalizedContent = normalizeText(content);
+      
+      // For large selections (paragraphs), be much more lenient
+      if (selection.length > 50) {
+        // Check if the selection contains significant parts of the content
+        const words = normalizedSelection.split(' ').filter(word => word.length > 2);
+        
+        // If selection has many words, check if most of them exist in content
+        if (words.length > 5) {
+          const matchingWords = words.filter(word => 
+            normalizedContent.includes(word)
+          );
+          const matchRatio = matchingWords.length / words.length;
+          console.log('🔄 RightPanel: Large selection match ratio:', matchRatio, 'for', words.length, 'words');
+          
+          // Be much more lenient - if we have a reasonable match, accept it
+          return matchRatio > 0.3; // Only 30% of words need to match for large selections
+        }
       }
-    } else {
-      // No selection - edit entire section with current content
+      
+      // For smaller selections, use direct inclusion check
+      return normalizedContent.includes(normalizedSelection);
+    };
+    
+    if (hasSelection && selectionText.length > 10) {
+      // User has selected a meaningful amount of text - use it regardless of validation
+      // This ensures large paragraph selections are always respected
+      setSuggestEditContent(selectionText);
+      setSuggestEditContentType('selected');
+      console.log('✅ RightPanel: Using large selection directly:', selectionText.substring(0, 100) + '...');
+      setLastSelection('');
+    } else if (hasSelection && isSelectionValid(selectionText, currentContent)) {
+      // User has selected text and it exists in current content
+      setSuggestEditContent(selectionText);
+      setSuggestEditContentType('selected');
+      console.log('✅ RightPanel: Set content type to SELECTED');
+      setLastSelection('');
+    } else if (hasSelection) {
+      // User has selected text but it's not found in current content
+      // This might happen if selection is from a different section or outdated
+      console.log('⚠️ RightPanel: Selection not found in current content, falling back to section edit');
+      console.log('🔄 RightPanel: Selection validation failed for:', selectionText.substring(0, 100) + '...');
       setSuggestEditContent(currentContent);
       setSuggestEditContentType('section');
-      console.log('🔄 RightPanel: Set content type to SECTION');
+      setLastSelection('');
+    } else {
+      // No selection or selection not found - edit entire section
+      setSuggestEditContent(currentContent);
+      setSuggestEditContentType('section');
+      console.log('✅ RightPanel: Set content type to SECTION');
+      setLastSelection('');
     }
+    
     setShowSuggestEditModal(true);
     console.log('🔄 RightPanel: Modal should be open now');
   };
@@ -317,7 +398,21 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                   className="action-btn"
                   onClick={handleSuggestEditClick}
                   onMouseDown={(e) => {
-                    // Prevent the mousedown from clearing the selection
+                    // Capture selection immediately before any button interaction
+                    const selection = window.getSelection();
+                    const selectionText = selection ? selection.toString().trim() : '';
+                    if (selectionText.length > 0) {
+                      sessionStorage.setItem('lastSelectedText', selectionText);
+                      sessionStorage.setItem('lastSelectionValid', 'true');
+                      setLastSelection(selectionText);
+                      console.log('🔄 RightPanel: Pre-click selection captured:', selectionText);
+                    }
+                    // Prevent the button from stealing focus and clearing selection
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onFocus={(e) => {
+                    // Prevent focus from clearing selection
                     e.preventDefault();
                   }}
                 >
