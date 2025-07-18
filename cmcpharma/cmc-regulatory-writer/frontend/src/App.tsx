@@ -42,6 +42,7 @@ interface AppState {
     completedSections: string[];
     totalSections: number;
   } | null;
+  editedSections: {[key: string]: string}; // Add edited sections state
 }
 
 function AppContent() {
@@ -81,12 +82,32 @@ function AppContent() {
     projectStructure: defaultProjectStructure,
     projectName: "Module 3 Quality Documentation",
     activeTabId: null,
-    generationProgress: null
+    generationProgress: null,
+    editedSections: {} // Initialize edited sections
   });
 
   const handleViewChange = (view: 'editor' | 'files' | 'templates' | 'history' | 'connection-test') => {
     console.log('Switching to view:', view);
     setState(prev => ({ ...prev, currentView: view }));
+  };
+
+  // Handle editing sections
+  const handleEditSection = (sectionId: string, editedContent: string) => {
+    console.log('🔄 App: handleEditSection called with:', { sectionId, editedContent: editedContent.substring(0, 100) + '...' });
+    
+    setState(prev => {
+      const newEditedSections = {
+        ...prev.editedSections,
+        [sectionId]: editedContent
+      };
+      console.log('🔄 App: New editedSections state:', newEditedSections);
+      return {
+        ...prev,
+        editedSections: newEditedSections
+      };
+    });
+    
+    console.log('🔄 App: Section edited successfully');
   };
 
   const handleNewDocument = () => {
@@ -358,6 +379,7 @@ function AppContent() {
               isGenerating={state.isGenerating}
               generationProgress={state.generationProgress}
               activeTabId={state.activeTabId || undefined}
+              editedSections={state.editedSections}
             />
             <RightPanel 
               onNavigateToTemplates={() => setState(prev => ({ ...prev, currentView: 'templates' }))}
@@ -365,6 +387,11 @@ function AppContent() {
               onNavigateToFiles={() => setState(prev => ({ ...prev, currentView: 'files' }))}
               onGenerateFromTemplate={handleGenerateFromTemplate}
               currentDocument={null}
+              sections={state.generatedDocument?.sections || sampleSections}
+              citations={state.generatedDocument?.citations || sampleCitations}
+              activeTabId={state.activeTabId || undefined}
+              editedSections={state.editedSections}
+              onEditSection={handleEditSection}
             />
           </div>
         );

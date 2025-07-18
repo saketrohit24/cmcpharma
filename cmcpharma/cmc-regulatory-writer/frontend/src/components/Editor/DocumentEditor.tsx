@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { SpecificationTable } from './SpecificationTable';
 import { TextWithCitations } from '../Citations/TextWithCitations';
-import { SuggestEditModal } from '../SuggestEdit/SuggestEditModal';
 
 interface Section {
   id: string;
@@ -28,6 +27,7 @@ interface DocumentEditorProps {
     totalSections: number;
   } | null;
   activeTabId?: string;
+  editedSections?: {[key: string]: string};
 }
 
 export const DocumentEditor: React.FC<DocumentEditorProps> = ({ 
@@ -35,15 +35,11 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   citations = [],
   isGenerating = false,
   generationProgress = null,
-  activeTabId
+  activeTabId,
+  editedSections = {}
 }) => {
-  const [showSuggestEditModal, setShowSuggestEditModal] = useState(false);
-  const [suggestEditContent, setSuggestEditContent] = useState('');
-  const [suggestEditContentType, setSuggestEditContentType] = useState<'selected' | 'section'>('section');
   const [sectionHighlighted, setSectionHighlighted] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
-  const [sessionId] = useState(() => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
-  const [editedSections, setEditedSections] = useState<{[key: string]: string}>({});
   const defaultSections: Section[] = [
     {
       id: '1',
@@ -123,104 +119,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     availableSections: sectionsToRender.map(s => s.title)
   });
 
-  // Handle text selection
-  const handleTextSelection = () => {
-    // This function can be used for future text selection features
-  };
-
-  // Handle suggest edit button click
-  const handleSuggestEditClick = () => {
-    console.log('🔄 handleSuggestEditClick called');
-    console.log('🔄 activeSection:', activeSection);
-    
-    if (!activeSection) {
-      console.error('❌ No active section found');
-      return;
-    }
-    
-    const selection = window.getSelection();
-    const selectionText = selection ? selection.toString().trim() : '';
-    const hasSelection = selectionText.length > 0;
-    
-    console.log('🔄 Selection text:', selectionText);
-    console.log('🔄 Has selection:', hasSelection);
-    
-    // Get the current content (edited or original)
-    const currentContent = editedSections[activeSection.id] || activeSection.content;
-    
-    if (hasSelection) {
-      // User has selected text - verify it exists in current content
-      if (currentContent.includes(selectionText)) {
-        setSuggestEditContent(selectionText);
-        setSuggestEditContentType('selected');
-        console.log('🔄 Set content type to SELECTED');
-      } else {
-        // Selection doesn't exist in current content, fall back to section edit
-        console.log('⚠️ Selected text not found in current content, falling back to section edit');
-        setSuggestEditContent(currentContent);
-        setSuggestEditContentType('section');
-        setSectionHighlighted(true);
-        setTimeout(() => setSectionHighlighted(false), 2000);
-      }
-    } else {
-      // No selection - edit entire section with current content
-      setSuggestEditContent(currentContent);
-      setSuggestEditContentType('section');
-      console.log('🔄 Set content type to SECTION, content:', currentContent);
-      
-      // Highlight the section briefly
-      setSectionHighlighted(true);
-      setTimeout(() => setSectionHighlighted(false), 2000);
-    }
-    
-    setShowSuggestEditModal(true);
-    console.log('🔄 Modal should be open now');
-  };
-
-  // Handle applying suggested edits
-  const handleApplySuggestedEdit = (editedContent: string) => {
-    console.log('🔄 handleApplySuggestedEdit called with:', editedContent);
-    console.log('🔄 activeSection:', activeSection);
-    console.log('🔄 suggestEditContentType:', suggestEditContentType);
-    
-    if (!activeSection) {
-      console.error('❌ No active section found');
-      return;
-    }
-
-    // Force a re-render by ensuring the state update is applied
-    setEditedSections(prev => {
-      const newState = { ...prev };
-      
-      if (suggestEditContentType === 'section') {
-        // Update entire section content
-        newState[activeSection.id] = editedContent;
-        console.log('✅ Updated entire section content for:', activeSection.id);
-      } else if (suggestEditContentType === 'selected') {
-        // Replace selected text within the section
-        const currentContent = prev[activeSection.id] || activeSection.content;
-        const originalSelectedText = suggestEditContent;
-        
-        console.log('🔄 Current content:', currentContent);
-        console.log('🔄 Original selected text:', originalSelectedText);
-        console.log('🔄 New edited content:', editedContent);
-        
-        // Replace the original selected text with the edited content
-        const updatedContent = currentContent.replace(originalSelectedText, editedContent);
-        newState[activeSection.id] = updatedContent;
-        console.log('✅ Updated selected text in section:', activeSection.id);
-      }
-      
-      console.log('🔄 New edited sections state:', newState);
-      return newState;
-    });
-    
-    // Close modal after a short delay to ensure state update is processed
-    setTimeout(() => {
-      setShowSuggestEditModal(false);
-    }, 100);
-  };
-
   // Debug effect to track editedSections changes
   useEffect(() => {
     console.log('📝 editedSections state changed:', editedSections);
@@ -229,38 +127,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
       console.log('📝 Content for active section:', activeSection.id, ':', editedSections[activeSection.id] || 'NOT FOUND');
     }
   }, [editedSections, activeSection]);
-
-  // Add keyboard event listener for text selection
-  useEffect(() => {
-    const handleSelectionChange = () => {
-      handleTextSelection();
-    };
-
-    document.addEventListener('selectionchange', handleSelectionChange);
-    return () => {
-      document.removeEventListener('selectionchange', handleSelectionChange);
-    };
-  }, []);
-
-  // Debug: Track editedSections state changes
-  useEffect(() => {
-    console.log('📝 editedSections state changed:', editedSections);
-    console.log('📝 Keys in editedSections:', Object.keys(editedSections));
-    if (activeSection) {
-      console.log('📝 Content for active section:', activeSection.id, ':', editedSections[activeSection.id]);
-    }
-  }, [editedSections, activeSection]);
-
-  const getTooltipText = () => {
-    const selection = window.getSelection();
-    const hasSelection = selection && selection.toString().trim();
-    
-    if (hasSelection) {
-      return 'Refine selected text';
-    } else {
-      return 'Refine current section';
-    }
-  };
 
   if (isGenerating) {
     return (
@@ -315,13 +181,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         <div className="content-actions">
           <button className="icon-btn">↶</button>
           <button className="icon-btn">↷</button>
-          <button 
-            className="suggest-edit-btn"
-            onClick={handleSuggestEditClick}
-            title={getTooltipText()}
-          >
-            ✨ Suggest edits
-          </button>
           <div className="toggle-container">
             <div className="toggle">
               <div className="toggle-slider"></div>
@@ -377,18 +236,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             )}
           </div>
         </div>
-      )}
-
-      {showSuggestEditModal && (
-        <SuggestEditModal 
-          isOpen={showSuggestEditModal} 
-          onClose={() => setShowSuggestEditModal(false)} 
-          content={suggestEditContent}
-          contentType={suggestEditContentType}
-          onApply={handleApplySuggestedEdit}
-          sessionId={sessionId}
-          sectionId={activeSection?.id}
-        />
       )}
     </main>
   );
