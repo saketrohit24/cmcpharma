@@ -38,7 +38,106 @@ interface SessionData {
   [key: string]: unknown;
 }
 
+export interface GeneratedDocument {
+  id: string;
+  title: string;
+  sections: DocumentSection[];
+  citations: DocumentCitation[];
+  templateId: string;
+  generatedAt: Date;
+  savedAt?: string;
+  [key: string]: unknown;
+}
+
+export interface FileItem {
+  id: string;
+  name: string;
+  type: 'file' | 'folder';
+  children?: FileItem[];
+  expanded?: boolean;
+}
+
+export interface AppState {
+  projectName: string;
+  projectStructure: FileItem[];
+  activeTabId: string | null;
+  editedSections: {[key: string]: string};
+}
+
 export const storage = {
+  // Generated Document Persistence
+  saveGeneratedDocument: (doc: GeneratedDocument) => {
+    try {
+      localStorage.setItem('cmc_generated_document', JSON.stringify({
+        ...doc,
+        savedAt: new Date().toISOString()
+      }));
+      console.log('📄 Generated document saved to localStorage');
+    } catch (error) {
+      console.error('Failed to save generated document:', error);
+    }
+  },
+
+  getGeneratedDocument: (): GeneratedDocument | null => {
+    try {
+      const saved = localStorage.getItem('cmc_generated_document');
+      if (saved) {
+        const doc = JSON.parse(saved);
+        console.log('📄 Retrieved generated document from localStorage');
+        return doc;
+      }
+    } catch (error) {
+      console.error('Failed to retrieve generated document:', error);
+    }
+    return null;
+  },
+
+  clearGeneratedDocument: () => {
+    try {
+      localStorage.removeItem('cmc_generated_document');
+      console.log('📄 Generated document cleared from localStorage');
+    } catch (error) {
+      console.error('Failed to clear generated document:', error);
+    }
+  },
+
+  // Session State Persistence
+  saveAppState: (state: AppState) => {
+    try {
+      const stateToSave = {
+        ...state,
+        savedAt: new Date().toISOString()
+      };
+      localStorage.setItem('cmc_app_state', JSON.stringify(stateToSave));
+      console.log('💾 App state saved to localStorage');
+    } catch (error) {
+      console.error('Failed to save app state:', error);
+    }
+  },
+
+  getAppState: (): AppState | null => {
+    try {
+      const saved = localStorage.getItem('cmc_app_state');
+      if (saved) {
+        const state = JSON.parse(saved);
+        console.log('💾 Retrieved app state from localStorage');
+        return state;
+      }
+    } catch (error) {
+      console.error('Failed to retrieve app state:', error);
+    }
+    return null;
+  },
+
+  clearAppState: () => {
+    try {
+      localStorage.removeItem('cmc_app_state');
+      console.log('💾 App state cleared from localStorage');
+    } catch (error) {
+      console.error('Failed to clear app state:', error);
+    }
+  },
+
   // Document Management
   saveDocument: (doc: StoredDocument) => {
     const docs = storage.getDocuments();

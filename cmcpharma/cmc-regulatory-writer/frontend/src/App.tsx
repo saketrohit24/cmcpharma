@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import './styles/regulatory.css';
 import { Header } from './components/Layout/Header';
 import { Sidebar } from './components/Layout/Sidebar';
@@ -14,7 +14,7 @@ import { SessionDebugPanel } from './components/Debug/SessionDebugPanel';
 import { sampleCitations, sampleSections } from './components/Editor/sampleData';
 import { FileProvider } from './contexts/FileContext';
 import { useFiles } from './contexts/useFiles';
-import { type StoredDocument } from './services/storage';
+import { storage, type StoredDocument } from './services/storage';
 import { templateGenerationService, type GeneratedDocument } from './services/templateGeneration';
 import { type TemplateStructure } from './services/backendApi';
 import { Toaster, toast } from 'react-hot-toast';
@@ -86,6 +86,48 @@ function AppContent() {
     editedSections: {} // Initialize edited sections
   });
 
+  // Restore document and state on page load
+  useEffect(() => {
+    console.log('🔄 App: Restoring document and state from localStorage...');
+    
+    // Restore generated document
+    const savedDocument = storage.getGeneratedDocument();
+    if (savedDocument) {
+      console.log('📄 App: Restored generated document:', savedDocument.title);
+      setState(prev => ({
+        ...prev,
+        generatedDocument: savedDocument
+      }));
+      toast.success('Document restored from previous session!');
+    }
+    
+    // Restore app state
+    const savedState = storage.getAppState();
+    if (savedState) {
+      console.log('💾 App: Restored app state');
+      setState(prev => ({
+        ...prev,
+        projectName: savedState.projectName,
+        projectStructure: savedState.projectStructure,
+        activeTabId: savedState.activeTabId,
+        editedSections: savedState.editedSections
+      }));
+    }
+  }, []);
+
+  // Auto-save state when it changes
+  useEffect(() => {
+    if (state.generatedDocument) {
+      console.log('💾 App: Auto-saving app state...');
+      storage.saveAppState({
+        projectName: state.projectName,
+        projectStructure: state.projectStructure,
+        activeTabId: state.activeTabId,
+        editedSections: state.editedSections
+      });
+    }
+  }, [state.projectName, state.projectStructure, state.activeTabId, state.editedSections, state.generatedDocument]);
+
   const handleViewChange = (view: 'editor' | 'files' | 'templates' | 'history' | 'connection-test') => {
     console.log('Switching to view:', view);
     setState(prev => ({ ...prev, currentView: view }));
@@ -100,18 +142,49 @@ function AppContent() {
         ...prev.editedSections,
         [sectionId]: editedContent
       };
-      console.log('🔄 App: New editedSections state:', newEditedSections);
+      
+      // Auto-save edited sections
+      storage.saveAppState({
+        projectName: prev.projectName,
+        projectStructure: prev.projectStructure,
+        activeTabId: prev.activeTabId,
+        editedSections: newEditedSections
+      });
+      
+      console.log('💾 App: Auto-saved edited sections to localStorage');
+      
       return {
         ...prev,
         editedSections: newEditedSections
       };
     });
-    
-    console.log('🔄 App: Section edited successfully');
   };
 
+  // Clear persisted data and start fresh
   const handleNewDocument = () => {
-    setState(prev => ({ ...prev, showNewDocumentModal: true }));
+    console.log('🗑️ App: Starting new document - clearing persisted data');
+    
+    // Clear all persisted data
+    storage.clearGeneratedDocument();
+    storage.clearAppState();
+    localStorage.removeItem('cmc_uploaded_files');
+    
+    // Reset app state
+    setState({
+      currentView: 'files',
+      generatedDocument: null,
+      showNewDocumentModal: false,
+      showLLMConfig: false,
+      currentDocumentId: null,
+      isGenerating: false,
+      projectStructure: defaultProjectStructure,
+      projectName: "Module 3 Quality Documentation",
+      activeTabId: null,
+      generationProgress: null,
+      editedSections: {}
+    });
+    
+    toast.success('Started new document - all data cleared!');
   };
 
   const handleOpenSettings = () => {
@@ -291,12 +364,17 @@ function AppContent() {
           projectStructureIdMap.has(section.title)
         );
 
+        const updatedDocument = {
+          ...generatedDoc,
+          sections: updatedSections
+        };
+
+        // Save the generated document to localStorage
+        storage.saveGeneratedDocument(updatedDocument);
+
         return {
           ...prev,
-          generatedDocument: {
-            ...generatedDoc,
-            sections: updatedSections
-          },
+          generatedDocument: updatedDocument,
           projectName: generatedDoc.title,
           // Set active tab to first matching section ID from project structure
           activeTabId: firstMatchingSection ? (projectStructureIdMap.get(firstMatchingSection.title) || null) : 
@@ -406,6 +484,7 @@ function AppContent() {
         onViewChange={handleViewChange}
         onNewDocument={handleNewDocument}
         onOpenSettings={handleOpenSettings}
+        onClearDocument={handleNewDocument}
         projectStructure={state.projectStructure}
         projectName={state.projectName}
         activeTabId={state.activeTabId || undefined}

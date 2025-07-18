@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Upload, BookOpen, Clock, Plus, Settings, Wifi } from 'lucide-react';
+import { FileText, Upload, BookOpen, Clock, Plus, Settings, Wifi, Trash2 } from 'lucide-react';
 
 interface Tab {
   id: string;
@@ -20,6 +20,7 @@ interface HeaderProps {
   onViewChange?: (view: 'editor' | 'files' | 'templates' | 'history' | 'connection-test') => void;
   onNewDocument?: () => void;
   onOpenSettings?: () => void;
+  onClearDocument?: () => void;
   projectStructure?: FileItem[];
   projectName?: string;
   activeTabId?: string;
@@ -31,6 +32,7 @@ export const Header: React.FC<HeaderProps> = ({
   onViewChange,
   onNewDocument,
   onOpenSettings,
+  onClearDocument,
   projectStructure = [],
   projectName = "Regulatory Document Management",
   activeTabId,
@@ -145,6 +147,14 @@ export const Header: React.FC<HeaderProps> = ({
             title="LLM Settings"
           >
             <Settings size={16} />
+          </button>
+          <button 
+            className="btn btn-secondary"
+            onClick={() => onClearDocument?.()}
+            title="Clear Document & Start Fresh"
+          >
+            <Trash2 size={16} />
+            Clear
           </button>
           <button 
             className="btn btn-primary"
