@@ -40,10 +40,10 @@ class ChatService:
         if not settings.LLM_API_KEY:
             raise ValueError("LLM_API_KEY is not set in the environment.")
         self.llm = ChatNVIDIA(
-            model="meta/llama-3.1-8b-instruct", 
+            model="meta/llama-4-scout-17b-16e-instruct", 
             nvidia_api_key=settings.LLM_API_KEY, 
-            max_tokens=2048,
-            temperature=0.7
+            max_tokens=512,
+            temperature=1.0
         )
         
         # Initialize related services
