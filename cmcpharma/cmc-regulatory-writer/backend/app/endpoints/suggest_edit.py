@@ -81,15 +81,33 @@ def should_use_rag(preset: str, custom_instructions: str, explicit_rag: bool) ->
 def build_edit_prompt(content: str, preset: str, custom_instructions: str, maintain_tone: bool, preserve_technical_accuracy: bool) -> str:
     """Build the prompt for content editing"""
     
-    # Build a simple, direct prompt
-    instruction = PRESET_CONFIGS[preset]['prompt'] if preset and preset in PRESET_CONFIGS else 'Edit this text'
+    # Build the instruction based on what's provided
+    if preset and preset in PRESET_CONFIGS:
+        # Use preset instruction
+        instruction = PRESET_CONFIGS[preset]['prompt']
+        
+        # Add custom instructions if also provided
+        if custom_instructions:
+            instruction = f"{instruction} Additionally, {custom_instructions}"
+    elif custom_instructions:
+        # Use only custom instructions with better formatting
+        instruction = f"Edit this content according to the following instructions: {custom_instructions}"
+    else:
+        # Fallback (shouldn't happen due to validation)
+        instruction = "Edit this text to improve its quality"
     
-    # Add custom instructions if provided
-    if custom_instructions:
-        instruction = f"{instruction} {custom_instructions}"
+    # Add constraints based on options
+    constraints = []
+    if maintain_tone:
+        constraints.append("maintain the original tone and style")
+    if preserve_technical_accuracy:
+        constraints.append("preserve all technical accuracy and factual information")
+    
+    if constraints:
+        instruction = f"{instruction}. Please {' and '.join(constraints)}."
     
     # Add clear output format instruction
-    prompt = f"{instruction}\n\nIMPORTANT: Return ONLY the edited content without explanations.\n\nText: {content}"
+    prompt = f"{instruction}\n\nIMPORTANT: Return ONLY the edited content without explanations or additional text.\n\nText to edit:\n{content}"
     
     return prompt
 
@@ -168,10 +186,6 @@ async def suggest_edit(request: SuggestEditRequest):
             maintain_tone=request.maintain_tone,
             preserve_technical_accuracy=request.preserve_technical_accuracy
         )
-        
-        # Debug: log the prompt
-        print(f"DEBUG: Edit prompt: {edit_prompt}")
-        print(f"DEBUG: Content length: {len(request.content)}")
         
         citations = None
         tokens_used = None

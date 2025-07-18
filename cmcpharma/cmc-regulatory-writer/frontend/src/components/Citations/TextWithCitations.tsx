@@ -18,6 +18,9 @@ export const TextWithCitations: React.FC<TextWithCitationsProps> = ({
   content, 
   citations = [] 
 }) => {
+  // Debug: Log when content changes
+  console.log('📝 TextWithCitations received content:', content);
+  
   // Default citations if none provided
   const defaultCitations: Citation[] = [
     {

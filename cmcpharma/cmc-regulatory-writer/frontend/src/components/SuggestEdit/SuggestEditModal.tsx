@@ -117,8 +117,16 @@ export const SuggestEditModal: React.FC<SuggestEditModalProps> = ({
       }
 
       const result = await response.json();
+      console.log('✅ API Response:', result);
+      console.log('✅ About to call onApply with:', result.edited_content);
+      
+      // Apply the edited content
       onApply(result.edited_content);
-      onClose();
+      
+      // Wait a moment before closing to ensure state update is processed
+      setTimeout(() => {
+        onClose();
+      }, 100);
       
       // Reset form
       setSelectedPreset(null);

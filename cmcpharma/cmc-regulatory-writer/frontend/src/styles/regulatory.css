@@ -2310,6 +2310,34 @@ li {
     text-align: right;
 }
 
+/* Edited indicator styles */
+.edited-indicator {
+    position: relative;
+    margin-bottom: 12px;
+}
+
+.edited-badge {
+    display: inline-block;
+    background-color: #10b981;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 /* Advanced Options */
 .suggest-edit-advanced {
     margin-bottom: 24px;
