@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { SpecificationTable } from './SpecificationTable';
 import { TextWithCitations } from '../Citations/TextWithCitations';
+import { SuggestEditModal } from '../SuggestEdit/SuggestEditModal';
 
 interface Section {
   id: string;
@@ -36,6 +37,14 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   generationProgress = null,
   activeTabId
 }) => {
+  const [showSuggestEditModal, setShowSuggestEditModal] = useState(false);
+  const [selectedText, setSelectedText] = useState('');
+  const [suggestEditContent, setSuggestEditContent] = useState('');
+  const [suggestEditContentType, setSuggestEditContentType] = useState<'selected' | 'section'>('section');
+  const [sectionHighlighted, setSectionHighlighted] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [sessionId] = useState(() => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
+  const [editedSections, setEditedSections] = useState<{[key: string]: string}>({});
   const defaultSections: Section[] = [
     {
       id: '1',
@@ -115,6 +124,83 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
     availableSections: sectionsToRender.map(s => s.title)
   });
 
+  // Handle text selection
+  const handleTextSelection = () => {
+    const selection = window.getSelection();
+    if (selection && selection.toString().trim()) {
+      setSelectedText(selection.toString().trim());
+    } else {
+      setSelectedText('');
+    }
+  };
+
+  // Handle suggest edit button click
+  const handleSuggestEditClick = () => {
+    const selection = window.getSelection();
+    const hasSelection = selection && selection.toString().trim();
+    
+    if (hasSelection) {
+      // User has selected text
+      setSuggestEditContent(selection.toString().trim());
+      setSuggestEditContentType('selected');
+    } else {
+      // Auto-select current section
+      if (activeSection) {
+        setSuggestEditContent(activeSection.content);
+        setSuggestEditContentType('section');
+        
+        // Highlight the section briefly
+        setSectionHighlighted(true);
+        setTimeout(() => setSectionHighlighted(false), 2000);
+      }
+    }
+    
+    setShowSuggestEditModal(true);
+  };
+
+  // Handle applying suggested edits
+  const handleApplySuggestedEdit = (editedContent: string) => {
+    // Update the section content
+    if (activeSection && suggestEditContentType === 'section') {
+      // Update the edited sections state
+      setEditedSections(prev => ({
+        ...prev,
+        [activeSection.id]: editedContent
+      }));
+      
+      console.log('Updated section content:', editedContent);
+    } else if (suggestEditContentType === 'selected') {
+      // Handle selected text replacement
+      // This would require more complex DOM manipulation
+      console.log('Would replace selected text with:', editedContent);
+    }
+    
+    setShowSuggestEditModal(false);
+  };
+
+  // Add keyboard event listener for text selection
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      handleTextSelection();
+    };
+
+    document.addEventListener('selectionchange', handleSelectionChange);
+    return () => {
+      document.removeEventListener('selectionchange', handleSelectionChange);
+    };
+  }, []);
+
+  const getTooltipText = () => {
+    const selection = window.getSelection();
+    const hasSelection = selection && selection.toString().trim();
+    
+    if (hasSelection) {
+      return 'Refine selected text';
+    } else {
+      return 'Refine current section';
+    }
+  };
+
   if (isGenerating) {
     return (
       <div className="document-editor">
@@ -168,6 +254,13 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
         <div className="content-actions">
           <button className="icon-btn">↶</button>
           <button className="icon-btn">↷</button>
+          <button 
+            className="suggest-edit-btn"
+            onClick={handleSuggestEditClick}
+            title={getTooltipText()}
+          >
+            ✨ Suggest edits
+          </button>
           <div className="toggle-container">
             <div className="toggle">
               <div className="toggle-slider"></div>
@@ -182,8 +275,14 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
           {activeSection.type === 'table' ? (
             <SpecificationTable />
           ) : (
-            <div className="section-content">
-              <TextWithCitations content={activeSection.content} citations={citations} />
+            <div 
+              className={`section-content ${sectionHighlighted ? 'highlight-section' : ''}`}
+              ref={contentRef}
+            >
+              <TextWithCitations 
+                content={editedSections[activeSection.id] || activeSection.content} 
+                citations={citations} 
+              />
             </div>
           )}
         </div>
@@ -211,6 +310,18 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             )}
           </div>
         </div>
+      )}
+
+      {showSuggestEditModal && (
+        <SuggestEditModal 
+          isOpen={showSuggestEditModal} 
+          onClose={() => setShowSuggestEditModal(false)} 
+          content={suggestEditContent}
+          contentType={suggestEditContentType}
+          onApply={handleApplySuggestedEdit}
+          sessionId={sessionId}
+          sectionId={activeSection?.id}
+        />
       )}
     </main>
   );
