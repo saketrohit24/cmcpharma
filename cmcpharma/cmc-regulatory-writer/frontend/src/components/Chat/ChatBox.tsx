@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User } from 'lucide-react';
+import { Bot, User, ArrowRight } from 'lucide-react';
 import { chatService, type LocalChatMessage } from '../../services/chatService';
 
 export const ChatBox: React.FC = () => {
   const [messages, setMessages] = useState<LocalChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState('');
+  const [useRAG, setUseRAG] = useState(true); // RAG toggle state
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -48,15 +48,13 @@ export const ChatBox: React.FC = () => {
       await chatService.sendMessageStream(
         messageText,
         // onChunk - called for each chunk received
-        (chunk: string, messageId: string) => {
-          setStreamingMessageId(messageId);
+        (chunk: string) => {
           setStreamingText(prev => prev + chunk);
         },
         // onComplete - called when streaming is finished
         (assistantMessage: LocalChatMessage) => {
           setMessages(prev => [...prev, assistantMessage]);
           setStreamingText('');
-          setStreamingMessageId(null);
           setIsLoading(false);
         },
         // onError - called if an error occurs
@@ -70,9 +68,10 @@ export const ChatBox: React.FC = () => {
           };
           setMessages(prev => [...prev, errorMessage]);
           setStreamingText('');
-          setStreamingMessageId(null);
           setIsLoading(false);
-        }
+        },
+        // Options with RAG setting
+        { useRAG }
       );
     } catch (error) {
       console.error('Error sending message:', error);
@@ -98,10 +97,11 @@ export const ChatBox: React.FC = () => {
           <div className="chat-placeholder">
             <Bot size={32} className="mb-2 text-blue-500" />
             <p className="text-gray-600 text-center">
-              Hello! I'm your CMC regulatory writing assistant. 
+              Hello! I'm your RAG-enabled CMC regulatory writing assistant. 
             </p>
             <p className="text-sm text-gray-500 text-center mt-2">
               Ask me about specifications, protocols, stability studies, or any pharmaceutical questions!
+              I can answer from your uploaded documents and provide citations.
             </p>
           </div>
         ) : (
@@ -124,6 +124,22 @@ export const ChatBox: React.FC = () => {
                     {line.replace(/\*\*(.*?)\*\*/g, '$1')}
                   </p>
                 ))}
+                {/* Display citations if present */}
+                {message.citations && message.citations.length > 0 && (
+                  <div className="citations-container">
+                    <div className="citations-header">
+                      <span className="citations-label">Sources:</span>
+                    </div>
+                    <div className="citations-list">
+                      {message.citations.map((citation, index) => (
+                        <div key={index} className="citation-item">
+                          <span className="citation-number">[{index + 1}]</span>
+                          <span className="citation-text">{citation}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ))
@@ -169,6 +185,22 @@ export const ChatBox: React.FC = () => {
         <div ref={messagesEndRef} />
       </div>
       
+      {/* RAG Toggle Control */}
+      <div className="rag-toggle-container">
+        <label className="rag-toggle-label">
+          <input
+            type="checkbox"
+            className="rag-toggle-checkbox"
+            checked={useRAG}
+            onChange={(e) => setUseRAG(e.target.checked)}
+          />
+          <span className="rag-toggle-slider"></span>
+          <span className="rag-toggle-text">
+            {useRAG ? '📚 Document search enabled' : '💬 General chat mode'}
+          </span>
+        </label>
+      </div>
+      
       <form className="chat-form" onSubmit={handleSend}>
         <input
           type="text"
@@ -183,7 +215,7 @@ export const ChatBox: React.FC = () => {
           className="chat-send"
           disabled={isLoading || !inputValue.trim()}
         >
-          <Send size={16} />
+          <ArrowRight size={16} />
         </button>
       </form>
     </div>

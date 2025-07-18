@@ -37,6 +37,7 @@ class ChatRequest(BaseModel):
     max_tokens: Optional[int] = Field(default=1000, description="Maximum response tokens")
     temperature: Optional[float] = Field(default=0.7, description="Response creativity")
     include_citations: bool = Field(default=True, description="Include citations in response")
+    use_rag: bool = Field(default=True, description="Whether to use RAG for document context")
 
 
 class ChatResponse(BaseModel):

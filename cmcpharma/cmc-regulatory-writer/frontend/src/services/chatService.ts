@@ -10,6 +10,7 @@ export interface LocalChatMessage {
   sender: 'user' | 'assistant';
   timestamp: Date;
   isTyping?: boolean;
+  citations?: string[];
 }
 
 export interface ChatServiceOptions {
@@ -62,7 +63,7 @@ class ChatService {
           message,
           session_id: currentSession,
           use_rag: useRAG,
-          context: this.getRecentContext(currentSession)
+          context: undefined // Remove context for now to avoid type mismatch
         };
 
         console.log('Sending chat request:', request);
@@ -75,7 +76,8 @@ class ChatService {
             id: response.data.message.id,
             text: response.data.message.text,
             sender: 'assistant',
-            timestamp: new Date(response.data.message.timestamp)
+            timestamp: new Date(response.data.message.timestamp),
+            citations: response.data.citations || undefined
           };
 
           this.addMessageToSession(currentSession, assistantMessage);
@@ -109,10 +111,8 @@ class ChatService {
       const request: ChatRequest = {
         message,
         session_id: sessionId || this.currentSessionId || undefined,
-        context: {},
-        max_tokens: 1000,
-        temperature: 0.7,
-        include_citations: false
+        use_rag: options.useRAG !== undefined ? options.useRAG : true,
+        context: undefined // Remove context for now to avoid type mismatch
       };
 
       const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8001'}/api/chat/message/stream`, {
@@ -160,7 +160,8 @@ class ChatService {
                     id: data.message.id,
                     text: data.message.text,
                     sender: 'assistant',
-                    timestamp: new Date(data.message.timestamp)
+                    timestamp: new Date(data.message.timestamp),
+                    citations: data.citations || undefined
                   };
                   
                   if (data.message.session_id) {
