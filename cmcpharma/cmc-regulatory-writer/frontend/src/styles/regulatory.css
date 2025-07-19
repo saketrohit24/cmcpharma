@@ -837,7 +837,7 @@ li {
     align-items: center;
     padding: 12px 16px;
     background-color: white;
-    border: 1px solid #e5e7eb;
+    border: 1px solid #e7e7eb;
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s;
@@ -2422,3 +2422,4 @@ li {
         background-color: #eff6ff;
     }
 }
+

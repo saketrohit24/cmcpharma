@@ -41,7 +41,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   onGenerateFromTemplate,
   currentDocument,
   sections = [],
-  citations = [],
+  // citations = [], // Commented out unused parameter
   activeTabId,
   editedSections = {},
   onEditSection

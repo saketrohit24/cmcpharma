@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { SpecificationTable } from './SpecificationTable';
-import { TextWithCitations } from '../Citations/TextWithCitations';
+import { EditableContent } from './EditableContent';
+import '../../styles/editable-content.css';
 
 interface Section {
   id: string;
@@ -28,6 +29,8 @@ interface DocumentEditorProps {
   } | null;
   activeTabId?: string;
   editedSections?: {[key: string]: string};
+  onSectionEdit?: (sectionId: string, newContent: string) => void;
+  onSectionRevert?: (sectionId: string) => void;
 }
 
 export const DocumentEditor: React.FC<DocumentEditorProps> = ({ 
@@ -36,10 +39,20 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
   isGenerating = false,
   generationProgress = null,
   activeTabId,
-  editedSections = {}
+  editedSections = {},
+  onSectionEdit,
+  onSectionRevert
 }) => {
-  const [sectionHighlighted, setSectionHighlighted] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // Default handlers if not provided
+  const handleSectionEdit = onSectionEdit || ((sectionId: string, newContent: string) => {
+    console.log('Section edit:', sectionId, newContent);
+  });
+
+  const handleSectionRevert = onSectionRevert || ((sectionId: string) => {
+    console.log('Section revert:', sectionId);
+  });
   const defaultSections: Section[] = [
     {
       id: '1',
@@ -195,19 +208,15 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
           {activeSection.type === 'table' ? (
             <SpecificationTable />
           ) : (
-            <div 
-              className={`section-content ${sectionHighlighted ? 'highlight-section' : ''}`}
-              ref={contentRef}
-            >
-              {editedSections[activeSection.id] && (
-                <div className="edited-indicator">
-                  <span className="edited-badge">✓ Edited</span>
-                </div>
-              )}
-              <TextWithCitations 
+            <div className="section-content" ref={contentRef}>
+              <EditableContent
                 key={`${activeSection.id}-${editedSections[activeSection.id] ? 'edited' : 'original'}`}
                 content={editedSections[activeSection.id] || activeSection.content}
-                citations={citations} 
+                citations={citations}
+                sectionId={activeSection.id}
+                isEdited={!!editedSections[activeSection.id]}
+                onSave={handleSectionEdit}
+                onRevert={handleSectionRevert}
               />
             </div>
           )}

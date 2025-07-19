@@ -1,31 +1,10 @@
 // Example usage of FileManager component
-import React, { useState } from 'react';
+import React from 'react';
 import { FileManager } from './FileManager';
-
-interface UploadedFile {
-  id: string;
-  name: string;
-  size: number;
-  uploadedAt: Date;
-}
+import { useFiles } from '../../contexts/useFiles';
 
 export const FileManagerExample: React.FC = () => {
-  const [files, setFiles] = useState<UploadedFile[]>([]);
-
-  const handleFilesChange = (updatedFiles: UploadedFile[]) => {
-    setFiles(updatedFiles);
-    
-    // You could also:
-    // - Save to localStorage
-    // - Send to an API
-    // - Update global state (Redux, Zustand, etc.)
-    // - Trigger file processing
-    
-    console.log(`Total files: ${updatedFiles.length}`);
-    updatedFiles.forEach(file => {
-      console.log(`- ${file.name} (${formatFileSize(file.size)})`);
-    });
-  };
+  const { files } = useFiles();
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
@@ -43,7 +22,7 @@ export const FileManagerExample: React.FC = () => {
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div>
-          <FileManager onFilesChange={handleFilesChange} />
+          <FileManager />
         </div>
         
         <div className="bg-white p-4 rounded-lg border">
