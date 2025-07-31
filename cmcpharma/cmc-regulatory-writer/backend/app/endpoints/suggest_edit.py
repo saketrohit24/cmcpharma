@@ -1,273 +1,295 @@
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
-import time
-import uuid
-from ..services.chat_service import ChatService
+from pydantic import BaseModel
+from typing import Optional
+import logging
+from ..services.generation_service import GenerationService
 from ..services.rag_service import RAGService
-from ..models.chat import ChatRequest
+from ..core.config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Pydantic models for request/response
 class SuggestEditRequest(BaseModel):
-    """Request model for suggest edit functionality"""
-    content: str = Field(..., description="The content to be edited")
-    preset: Optional[str] = Field(None, description="Selected preset action")
-    custom_instructions: Optional[str] = Field(None, description="Custom user instructions")
-    use_rag: bool = Field(False, description="Whether to use RAG for additional research")
-    maintain_tone: bool = Field(True, description="Maintain original tone")
-    preserve_technical_accuracy: bool = Field(True, description="Preserve technical accuracy")
-    session_id: str = Field(..., description="Session ID for tracking")
-    section_id: Optional[str] = Field(None, description="ID of the section being edited")
+    content: str
+    preset: Optional[str] = None
+    custom_instructions: Optional[str] = None
+    use_rag: bool = False
+    maintain_tone: bool = True
+    preserve_technical_accuracy: bool = True
+    session_id: str
+    section_id: Optional[str] = None
 
 class SuggestEditResponse(BaseModel):
-    """Response model for suggest edit functionality"""
-    edited_content: str = Field(..., description="The edited content")
-    processing_time: float = Field(..., description="Time taken to process the request")
-    used_rag: bool = Field(..., description="Whether RAG was used")
-    preset_used: Optional[str] = Field(None, description="Preset that was applied")
-    tokens_used: Optional[int] = Field(None, description="Number of tokens used")
-    citations: Optional[List[Dict[str, Any]]] = Field(None, description="Citations if RAG was used")
-    request_id: str = Field(..., description="Unique request ID")
+    edited_content: str
+    edit_summary: str
+    changes_made: list[str]
 
 # Initialize services
-chat_service = ChatService()
-# RAG service will be initialized when needed
-rag_service = None
+generation_service = GenerationService()
 
-# Preset configurations
-PRESET_CONFIGS = {
-    "shorten": {
-        "prompt": "Shorten this content while keeping all key points and important information. Remove redundancy and wordiness without losing meaning.",
-        "requires_rag": False
-    },
-    "clarify": {
-        "prompt": "Improve the clarity and readability of this content. Make it easier to understand while maintaining technical accuracy.",
-        "requires_rag": False
-    },
-    "improve_flow": {
-        "prompt": "Improve the logical flow and transitions in this content. Make it read more smoothly and coherently.",
-        "requires_rag": False
-    },
-    "make_concise": {
-        "prompt": "Make this content more concise by removing unnecessary words and phrases while preserving all essential information.",
-        "requires_rag": False
-    },
-    "expand_detail": {
-        "prompt": "Expand this content with more comprehensive details and information. Add relevant technical details and explanations.",
-        "requires_rag": True
-    },
-    "simplify": {
-        "prompt": "Simplify this content using clearer language and simpler sentence structure while maintaining technical accuracy.",
-        "requires_rag": False
-    }
+PRESET_PROMPTS = {
+    "shorten": """Shorten the following content while preserving all key points and technical accuracy. Remove redundancy and wordiness but maintain the essential meaning and regulatory compliance requirements.
+
+Content to edit:
+{content}
+
+Provide a shortened version that:
+- Retains all critical technical information
+- Maintains regulatory compliance language
+- Removes unnecessary words and phrases
+- Preserves the original tone and structure
+- Maintains the EXACT same formatting (paragraphs, headers, lists, etc.)
+- Keeps all subsection headers and organizational structure
+- Does NOT add any new references or citations
+- Only returns the edited content without additional references""",
+
+    "clarify": """Improve the clarity and readability of the following content while maintaining technical accuracy and regulatory compliance.
+
+Content to edit:
+{content}
+
+Provide a clarified version that:
+- Uses clearer, more direct language
+- Improves sentence structure and flow
+- Maintains all technical terms and regulatory requirements
+- Enhances understanding without changing meaning
+- Maintains the EXACT same formatting (paragraphs, headers, lists, etc.)
+- Keeps all subsection headers and organizational structure
+- Does NOT add any new references or citations
+- Only returns the edited content without additional references""",
+
+    "improve_flow": """Improve the logical flow and transitions in the following content while maintaining technical accuracy and regulatory compliance.
+
+Content to edit:
+{content}
+
+Provide an improved version that:
+- Enhances transitions between ideas
+- Creates better logical progression
+- Maintains all technical information
+- Improves overall readability and coherence
+- Maintains the EXACT same formatting (paragraphs, headers, lists, etc.)
+- Keeps all subsection headers and organizational structure
+- Does NOT add any new references or citations
+- Only returns the edited content without additional references""",
+
+    "make_concise": """Make the following content more concise by removing redundancy and unnecessary words while preserving all essential information.
+
+Content to edit:
+{content}
+
+Provide a concise version that:
+- Eliminates redundant phrases and information
+- Uses more efficient language
+- Maintains all critical technical details
+- Preserves regulatory compliance requirements
+- Maintains the EXACT same formatting (paragraphs, headers, lists, etc.)
+- Keeps all subsection headers and organizational structure
+- Does NOT add any new references or citations
+- Only returns the edited content without additional references""",
+
+    "expand_detail": """Add more comprehensive detail and explanation to the following content while maintaining accuracy and regulatory compliance.
+
+Content to edit:
+{content}
+
+{rag_context}
+
+Provide an expanded version that:
+- Adds relevant technical details from available sources
+- Provides more comprehensive explanations
+- Maintains accuracy and regulatory compliance
+- Enhances the depth of information
+- Maintains the EXACT same formatting (paragraphs, headers, lists, etc.)
+- Keeps all subsection headers and organizational structure
+- Does NOT add any new references or citations
+- Only returns the edited content without additional references""",
+
+    "simplify": """Simplify the language and structure of the following content while maintaining technical accuracy and all essential information.
+
+Content to edit:
+{content}
+
+Provide a simplified version that:
+- Uses simpler, more accessible language
+- Breaks down complex concepts
+- Maintains all technical requirements
+- Preserves regulatory compliance needs
+- Maintains the EXACT same formatting (paragraphs, headers, lists, etc.)
+- Keeps all subsection headers and organizational structure
+- Does NOT add any new references or citations
+- Only returns the edited content without additional references"""
 }
 
-def should_use_rag(preset: str, custom_instructions: str, explicit_rag: bool) -> bool:
-    """Determine if RAG should be used based on preset and instructions"""
-    if explicit_rag:
-        return True
-    
-    if preset and PRESET_CONFIGS.get(preset, {}).get("requires_rag", False):
-        return True
-    
-    if custom_instructions:
-        research_keywords = ["research", "find more", "add details", "investigate", "expand upon", "more information"]
-        return any(keyword in custom_instructions.lower() for keyword in research_keywords)
-    
-    return False
+async def get_generation_service():
+    return generation_service
 
-def build_edit_prompt(content: str, preset: str, custom_instructions: str, maintain_tone: bool, preserve_technical_accuracy: bool) -> str:
-    """Build the prompt for content editing"""
+async def get_rag_service():
+    """Get RAG service with all available documents"""
+    import os
+    upload_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "persistent_uploads")
     
-    # Build the instruction based on what's provided
-    if preset and preset in PRESET_CONFIGS:
-        # Use preset instruction
-        instruction = PRESET_CONFIGS[preset]['prompt']
+    def get_all_document_files(upload_dir: str):
+        """Get all document files from the persistent uploads directory"""
+        document_files = []
+        supported_extensions = ['.txt', '.pdf', '.doc', '.docx', '.md']
         
-        # Add custom instructions if also provided
-        if custom_instructions:
-            instruction = f"{instruction} Additionally, {custom_instructions}"
-    elif custom_instructions:
-        # Use only custom instructions with better formatting
-        instruction = f"Edit this content according to the following instructions: {custom_instructions}"
-    else:
-        # Fallback (shouldn't happen due to validation)
-        instruction = "Edit this text to improve its quality"
+        try:
+            if os.path.exists(upload_dir):
+                for root, dirs, files in os.walk(upload_dir):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        file_extension = os.path.splitext(file)[1].lower()
+                        if file_extension in supported_extensions:
+                            document_files.append(file_path)
+        except Exception as e:
+            print(f"Error scanning documents: {e}")
+            
+        return document_files
     
-    # Add constraints based on options
-    constraints = []
-    if maintain_tone:
-        constraints.append("maintain the original tone and style")
-    if preserve_technical_accuracy:
-        constraints.append("preserve all technical accuracy and factual information")
-    
-    if constraints:
-        instruction = f"{instruction}. Please {' and '.join(constraints)}."
-    
-    # Add clear output format instruction
-    prompt = f"{instruction}\n\nIMPORTANT: Return ONLY the edited content without explanations or additional text.\n\nText to edit:\n{content}"
-    
-    return prompt
-
-def clean_edit_response(content: str) -> str:
-    """Clean up the model response to extract only the edited content"""
-    # Remove common prefixes
-    prefixes_to_remove = [
-        "Here is the edited content:",
-        "Here's the edited content:",
-        "Edited content:",
-        "Content shortened:",
-        "The shortened content:",
-        "Shortened:",
-        "Clarified content:",
-        "Improved content:",
-        "Here is the",
-        "Here's the",
-        "The edited text:",
-        "Edited text:",
-        "Content:",
-        "Text:",
-        "Result:",
-        "Output:",
-        "Shorten the content:",
-        "Clarify the content:",
-        "Improve the content:",
-        "Make the content concise:",
-        "Simplify the content:",
-        "Expand the content:",
-    ]
-    
-    content = content.strip()
-    
-    # Remove prefixes
-    for prefix in prefixes_to_remove:
-        if content.lower().startswith(prefix.lower()):
-            content = content[len(prefix):].strip()
-            break
-    
-    # Remove leading colons and newlines
-    content = content.lstrip(':').lstrip('\n').strip()
-    
-    # Remove quotes if the entire content is wrapped in quotes
-    if content.startswith('"') and content.endswith('"'):
-        content = content[1:-1].strip()
-    
-    # Remove any remaining leading/trailing whitespace
-    content = content.strip()
-    
-    return content
+    available_files = get_all_document_files(upload_dir)
+    return RAGService(file_paths=available_files)
 
 @router.post("/suggest-edit", response_model=SuggestEditResponse)
-async def suggest_edit(request: SuggestEditRequest):
+async def suggest_edit(
+    request: SuggestEditRequest,
+    gen_service: GenerationService = Depends(get_generation_service),
+    rag_service: RAGService = Depends(get_rag_service)
+):
     """
-    Process content editing based on presets and custom instructions
+    Generate suggested edits for content based on presets or custom instructions
     """
-    start_time = time.time()
-    request_id = str(uuid.uuid4())
-    
     try:
-        # Validate input
-        if not request.content.strip():
-            raise HTTPException(status_code=400, detail="Content cannot be empty")
+        logger.info(f"Processing suggest edit request for session {request.session_id}")
         
-        if not request.preset and not request.custom_instructions:
-            raise HTTPException(status_code=400, detail="Either preset or custom instructions must be provided")
-        
-        # Determine if RAG should be used
-        use_rag = should_use_rag(request.preset, request.custom_instructions or "", request.use_rag)
-        
-        # Build the editing prompt
-        edit_prompt = build_edit_prompt(
-            content=request.content,
-            preset=request.preset,
-            custom_instructions=request.custom_instructions or "",
-            maintain_tone=request.maintain_tone,
-            preserve_technical_accuracy=request.preserve_technical_accuracy
-        )
-        
-        citations = None
-        tokens_used = None
-        
-        if use_rag:
-            # For RAG-enhanced editing, we'll use the chat service with additional context
-            # In a real implementation, this would retrieve relevant documents first
-            enhanced_prompt = f"{edit_prompt}\n\nNote: Use your knowledge base to provide additional relevant information where appropriate."
+        # Prepare the editing prompt
+        if request.preset and request.preset in PRESET_PROMPTS:
+            # Use preset prompt
+            base_prompt = PRESET_PROMPTS[request.preset]
             
-            chat_request = ChatRequest(
-                message=enhanced_prompt,
-                session_id=request.session_id
-            )
-            chat_response = await chat_service.send_message(chat_request)
-            edited_content = clean_edit_response(chat_response.message.text)
-            tokens_used = chat_response.tokens_used
-            citations = None  # Would be populated with actual RAG implementation
-        else:
-            # Use regular chat service for direct editing
-            chat_request = ChatRequest(
-                message=edit_prompt,
-                session_id=request.session_id
-            )
-            chat_response = await chat_service.send_message(chat_request)
-            edited_content = clean_edit_response(chat_response.message.text)
-            tokens_used = chat_response.tokens_used
-        
-        processing_time = time.time() - start_time
-        
-        return SuggestEditResponse(
-            edited_content=edited_content,
-            processing_time=processing_time,
-            used_rag=use_rag,
-            preset_used=request.preset,
-            tokens_used=tokens_used,
-            citations=citations,
-            request_id=request_id
-        )
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error processing edit suggestion: {str(e)}")
+            # Get RAG context if needed and requested
+            rag_context = ""
+            if request.use_rag and request.preset == "expand_detail":
+                try:
+                    relevant_docs = await rag_service.retrieve_relevant_content(
+                        query=request.content[:200],  # Use first 200 chars as query
+                        file_paths=[],
+                        top_k=3
+                    )
+                    
+                    if relevant_docs:
+                        context_parts = []
+                        for i, doc in enumerate(relevant_docs):
+                            context_parts.append(f"Source {i+1}: {doc.get('content', '')[:300]}...")
+                        rag_context = f"""
+Additional context from uploaded documents:
+{chr(10).join(context_parts)}
 
-@router.get("/suggest-edit/presets")
-async def get_presets():
-    """Get available presets for suggest edit functionality"""
-    return {
-        "presets": [
-            {
-                "id": "shorten",
-                "name": "Shorten",
-                "description": "Reduce content length while keeping key points",
-                "requires_rag": False
-            },
-            {
-                "id": "clarify",
-                "name": "Clarify",
-                "description": "Improve readability and clarity",
-                "requires_rag": False
-            },
-            {
-                "id": "improve_flow",
-                "name": "Improve Flow",
-                "description": "Better transitions and logical progression",
-                "requires_rag": False
-            },
-            {
-                "id": "make_concise",
-                "name": "Make Concise",
-                "description": "Remove redundancy and wordiness",
-                "requires_rag": False
-            },
-            {
-                "id": "expand_detail",
-                "name": "Expand Detail",
-                "description": "Add more comprehensive information",
-                "requires_rag": True
-            },
-            {
-                "id": "simplify",
-                "name": "Simplify",
-                "description": "Use simpler language and structure",
-                "requires_rag": False
-            }
-        ]
-    }
+Use this additional information to enhance the content:"""
+                    else:
+                        rag_context = "No additional context found in uploaded documents."
+                        
+                except Exception as e:
+                    logger.warning(f"RAG retrieval failed: {e}")
+                    rag_context = "Additional research unavailable."
+            
+            prompt = base_prompt.format(content=request.content, rag_context=rag_context)
+            
+        elif request.custom_instructions:
+            # Use custom instructions
+            rag_context = ""
+            if request.use_rag:
+                try:
+                    relevant_docs = await rag_service.retrieve_relevant_content(
+                        query=request.custom_instructions + " " + request.content[:100],
+                        file_paths=[],
+                        top_k=3
+                    )
+                    
+                    if relevant_docs:
+                        context_parts = []
+                        for i, doc in enumerate(relevant_docs):
+                            context_parts.append(f"Source {i+1}: {doc.get('content', '')[:300]}...")
+                        rag_context = f"""
+Additional context from uploaded documents:
+{chr(10).join(context_parts)}"""
+                except Exception as e:
+                    logger.warning(f"RAG retrieval failed: {e}")
+                    rag_context = ""
+            
+            prompt = f"""You are an expert regulatory writer. Edit the following content according to these instructions: {request.custom_instructions}
+
+Content to edit:
+{request.content}
+
+{rag_context}
+
+CRITICAL INSTRUCTIONS:
+- {"Maintain the original tone and style" if request.maintain_tone else "Feel free to adjust tone as needed"}
+- {"Preserve all technical accuracy and regulatory compliance" if request.preserve_technical_accuracy else "Focus on the requested changes"}
+- Make the requested modifications while ensuring the content remains professional and accurate
+- Maintain the EXACT same formatting (paragraphs, headers, lists, etc.)
+- Keep all subsection headers and organizational structure
+- Do NOT add any new references or citations
+- Do NOT include any introductory text, explanations, or phrases like "Here is...", "The edited content...", etc.
+- Do NOT add quotation marks around the response
+- Return ONLY the edited content itself - start immediately with the actual content
+- If the user asks for bullets, convert ONLY the specified content to bullet format without adding introduction
+
+IMPORTANT: Your response must start directly with the edited content. No introduction, no explanation, no "Here is" phrases."""
+        else:
+            raise HTTPException(status_code=400, detail="Either preset or custom_instructions must be provided")
+
+        # Generate the edited content using the LLM
+        try:
+            # Use the generation service's LLM directly
+            import asyncio
+            response = await asyncio.to_thread(gen_service.llm.invoke, prompt)
+            
+            if hasattr(response, 'content'):
+                edited_content = response.content.strip()
+            else:
+                edited_content = str(response).strip()
+            
+            # Generate a summary of changes
+            summary_prompt = f"""Compare the original and edited content and provide a brief summary of the key changes made.
+
+Original:
+{request.content[:200]}...
+
+Edited:
+{edited_content[:200]}...
+
+Provide a brief summary of the main changes:"""
+            
+            summary_response = await asyncio.to_thread(gen_service.llm.invoke, summary_prompt)
+            if hasattr(summary_response, 'content'):
+                edit_summary = summary_response.content.strip()
+            else:
+                edit_summary = str(summary_response).strip()
+            
+            # Generate list of specific changes
+            changes_made = []
+            if request.preset:
+                changes_made.append(f"Applied {request.preset} preset")
+            if request.custom_instructions:
+                changes_made.append(f"Applied custom instructions: {request.custom_instructions[:50]}...")
+            if request.use_rag:
+                changes_made.append("Enhanced with additional research from uploaded documents")
+            
+            return SuggestEditResponse(
+                edited_content=edited_content,
+                edit_summary=edit_summary,
+                changes_made=changes_made
+            )
+            
+        except Exception as e:
+            logger.error(f"LLM processing failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Content editing failed: {str(e)}")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Suggest edit failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Suggest edit processing failed: {str(e)}")

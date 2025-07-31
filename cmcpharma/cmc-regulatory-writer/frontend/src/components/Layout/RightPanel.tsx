@@ -336,8 +336,11 @@ export const RightPanel: React.FC<RightPanelProps> = ({
     }
 
     console.log('🔄 RightPanel: handleApplySuggestedEdit called');
+    console.log('🔄 RightPanel: activeSection:', { id: activeSection.id, title: activeSection.title });
+    console.log('🔄 RightPanel: activeTabId:', activeTabId);
     console.log('🔄 RightPanel: suggestEditContentType:', suggestEditContentType);
-    console.log('🔄 RightPanel: editedContent:', editedContent);
+    console.log('🔄 RightPanel: editedContent length:', editedContent.length);
+    console.log('🔄 RightPanel: editedSections keys before update:', Object.keys(editedSections));
     
     let finalContent = editedContent;
     
@@ -347,24 +350,227 @@ export const RightPanel: React.FC<RightPanelProps> = ({
       const originalSelectedText = suggestEditContent;
       
       console.log('🔄 RightPanel: Replacing selected text');
-      console.log('🔄 RightPanel: Current content:', currentContent);
-      console.log('🔄 RightPanel: Original selected text:', originalSelectedText);
+      console.log('🔄 RightPanel: Current content length:', currentContent.length);
+      console.log('🔄 RightPanel: Original selected text length:', originalSelectedText.length);
+      console.log('🔄 RightPanel: Original selected text preview:', originalSelectedText.substring(0, 200) + '...');
+      console.log('🔄 RightPanel: Edited content preview:', editedContent.substring(0, 200) + '...');
       
-      // Use a more robust replacement method
-      if (currentContent.includes(originalSelectedText)) {
-        finalContent = currentContent.replace(originalSelectedText, editedContent);
-        console.log('🔄 RightPanel: Final content after replacement:', finalContent);
+      // SMART TEXT REPLACEMENT STRATEGY:
+      // Multiple fallback methods to handle various text matching scenarios
+      
+      const smartTextReplacement = (content: string, originalText: string, newText: string): string | null => {
+        // Method 1: Exact match
+        if (content.includes(originalText)) {
+          console.log('✅ Exact match found');
+          return content.replace(originalText, newText);
+        }
+        
+        // Method 2: Normalize whitespace and try again
+        const normalizeWhitespace = (text: string) => text.replace(/\s+/g, ' ').trim();
+        const normalizedOriginal = normalizeWhitespace(originalText);
+        const normalizedContent = normalizeWhitespace(content);
+        
+        if (normalizedContent.includes(normalizedOriginal)) {
+          console.log('✅ Normalized whitespace match found');
+          // Create regex that handles flexible whitespace
+          const flexibleRegex = new RegExp(
+            originalText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'),
+            'gi'
+          );
+          if (flexibleRegex.test(content)) {
+            return content.replace(flexibleRegex, newText);
+          }
+        }
+        
+        // Method 3: Try first 50 characters match (handles truncated selections)
+        const shortOriginal = originalText.substring(0, 50);
+        const shortNormalized = normalizeWhitespace(shortOriginal);
+        
+        if (shortOriginal.length > 10 && normalizedContent.includes(shortNormalized)) {
+          console.log('✅ Short text match found, looking for full context');
+          // Find the position and try to match more context
+          const startIndex = normalizedContent.indexOf(shortNormalized);
+          if (startIndex !== -1) {
+            // Extract surrounding context to find the full original text
+            const contextBefore = Math.max(0, startIndex - 100);
+            const contextAfter = Math.min(normalizedContent.length, startIndex + originalText.length + 100);
+            const contextText = normalizedContent.substring(contextBefore, contextAfter);
+            
+            // Try to find the best matching segment
+            const words = normalizedOriginal.split(' ').filter(w => w.length > 2);
+            if (words.length >= 3) {
+              const firstThreeWords = words.slice(0, 3).join(' ');
+              const lastThreeWords = words.slice(-3).join(' ');
+              
+              const startMatch = contextText.indexOf(firstThreeWords);
+              const endMatch = contextText.indexOf(lastThreeWords);
+              
+              if (startMatch !== -1 && endMatch !== -1 && endMatch > startMatch) {
+                const extractedText = contextText.substring(startMatch, endMatch + lastThreeWords.length);
+                
+                // Now find this in the original content and replace
+                const flexibleRegex = new RegExp(
+                  extractedText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'),
+                  'gi'
+                );
+                
+                if (flexibleRegex.test(content)) {
+                  console.log('✅ Context-based match found');
+                  return content.replace(flexibleRegex, newText);
+                }
+              }
+            }
+          }
+        }
+        
+        // Method 4: Fuzzy word-based matching for longer texts
+        if (originalText.length > 100) {
+          const originalWords = normalizeWhitespace(originalText).split(' ').filter(w => w.length > 2);
+          const contentWords = normalizeWhitespace(content).split(' ');
+          
+          // Find the best continuous sequence match
+          let bestMatch = { start: -1, end: -1, score: 0 };
+          
+          for (let i = 0; i < contentWords.length - originalWords.length + 1; i++) {
+            let score = 0;
+            let consecutiveMatches = 0;
+            
+            for (let j = 0; j < originalWords.length; j++) {
+              if (i + j < contentWords.length && 
+                  contentWords[i + j].toLowerCase() === originalWords[j].toLowerCase()) {
+                score++;
+                consecutiveMatches++;
+              } else {
+                consecutiveMatches = 0;
+              }
+              
+              // Bonus for consecutive matches
+              if (consecutiveMatches > 3) {
+                score += consecutiveMatches * 0.1;
+              }
+            }
+            
+            const matchRatio = score / originalWords.length;
+            if (matchRatio > bestMatch.score && matchRatio > 0.7) {
+              bestMatch = { start: i, end: i + originalWords.length, score: matchRatio };
+            }
+          }
+          
+          if (bestMatch.start !== -1 && bestMatch.score > 0.7) {
+            console.log(`✅ Fuzzy match found with ${Math.round(bestMatch.score * 100)}% confidence`);
+            
+            // Find the actual text boundaries in the original content
+            const beforeWords = contentWords.slice(0, bestMatch.start);
+            const afterWords = contentWords.slice(bestMatch.end);
+            
+            // Reconstruct with proper spacing (approximately)
+            const beforeText = beforeWords.join(' ');
+            const afterText = afterWords.join(' ');
+            
+            // Find these boundaries in the original content
+            let beforeIndex = 0;
+            let afterIndex = content.length;
+            
+            if (beforeText.length > 0) {
+              const beforeMatch = content.indexOf(beforeText.substring(-50)); // Last 50 chars
+              if (beforeMatch !== -1) {
+                beforeIndex = beforeMatch + beforeText.substring(-50).length;
+              }
+            }
+            
+            if (afterText.length > 0) {
+              const afterMatch = content.indexOf(afterText.substring(0, 50), beforeIndex); // First 50 chars
+              if (afterMatch !== -1) {
+                afterIndex = afterMatch;
+              }
+            }
+            
+            if (beforeIndex < afterIndex) {
+              const beforePart = content.substring(0, beforeIndex);
+              const afterPart = content.substring(afterIndex);
+              return beforePart + newText + afterPart;
+            }
+          }
+        }
+        
+        // Method 5: Last resort - find any significant text overlap
+        if (originalText.length > 20) {
+          const sentences = originalText.split(/[.!?]+/).filter(s => s.trim().length > 10);
+          
+          for (const sentence of sentences) {
+            const cleanSentence = normalizeWhitespace(sentence);
+            if (cleanSentence.length > 15 && normalizedContent.includes(cleanSentence)) {
+              console.log('✅ Sentence-based match found');
+              // Replace this sentence and expand context
+              const regex = new RegExp(
+                cleanSentence.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'),
+                'gi'
+              );
+              
+              // Try to replace with some surrounding context
+              const expandedRegex = new RegExp(
+                `[^.!?]*${cleanSentence.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')}[^.!?]*`,
+                'gi'
+              );
+              
+              if (expandedRegex.test(content)) {
+                return content.replace(expandedRegex, newText);
+              } else if (regex.test(content)) {
+                return content.replace(regex, newText);
+              }
+            }
+          }
+        }
+        
+        return null;
+      };
+      
+      // Try smart replacement
+      const replacedContent = smartTextReplacement(currentContent, originalSelectedText, editedContent);
+      
+      if (replacedContent) {
+        finalContent = replacedContent;
+        console.log('✅ RightPanel: Text replacement successful using simple method');
       } else {
-        // If exact match not found, fall back to section edit
-        console.log('⚠️ RightPanel: Selected text not found, using section edit instead');
-        finalContent = editedContent;
+        // Show a clear error message and ask for confirmation
+        console.error('🚨 RightPanel: Could not find selected text for replacement');
+        
+        const userWantsToReplace = confirm(
+          `⚠️ Selected Text Replacement Failed\n\n` +
+          `The selected text could not be found in the current section content. This might happen if:\n` +
+          `• The text was from a different section\n` +
+          `• The content has been edited since selection\n` +
+          `• There was a copy/paste error\n\n` +
+          `Selected text preview: "${originalSelectedText.substring(0, 100)}..."\n\n` +
+          `Would you like to replace the ENTIRE section instead?\n\n` +
+          `• Click "OK" to replace the entire section\n` +
+          `• Click "Cancel" to try selecting the text again`
+        );
+        
+        if (userWantsToReplace) {
+          finalContent = editedContent;
+          console.log('⚠️ User chose to replace entire section');
+        } else {
+          console.log('✋ User cancelled operation - will try again');
+          setShowSuggestEditModal(false);
+          alert('Please try selecting the text again and click "Suggest Edit".');
+          return;
+        }
       }
+    } else {
+      console.log('🔄 RightPanel: Content type is "section", replacing entire section');
     }
     
     // Use the callback to update the section content
     if (onEditSection) {
-      console.log('🔄 RightPanel: Calling onEditSection with:', activeSection.id, finalContent);
+      console.log('🔄 RightPanel: About to call onEditSection with:');
+      console.log('   - sectionId:', activeSection.id);
+      console.log('   - content length:', finalContent.length);
+      console.log('   - content preview:', finalContent.substring(0, 200) + '...');
+      
       onEditSection(activeSection.id, finalContent);
+      
+      console.log('✅ RightPanel: onEditSection called successfully');
     } else {
       console.error('❌ onEditSection callback not available');
     }
@@ -397,6 +603,18 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                 <button 
                   className="action-btn"
                   onClick={handleSuggestEditClick}
+                  style={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '12px 16px',
+                    backgroundColor: 'white',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    marginBottom: '12px',
+                    width: '100%'
+                  }}
                   onMouseDown={(e) => {
                     // Capture selection immediately before any button interaction
                     const selection = window.getSelection();
@@ -416,10 +634,21 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                     e.preventDefault();
                   }}
                 >
-                  <div className="action-icon">
+                  <div className="action-icon" style={{
+                    width: '32px',
+                    height: '32px',
+                    backgroundColor: '#ef4444',
+                    color: 'white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '6px'
+                  }}>
                     <Plus size={20} />
                   </div>
-                  <span className="action-text">Suggest edits</span>
+                  <span className="action-text" style={{ fontSize: '14px', color: '#374151' }}>
+                    Suggest edits
+                  </span>
                 </button>
                 
                 <button className="action-btn">

@@ -1,7 +1,9 @@
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from .rag_service import RAGService
-from .graph_rag_service import RAGConfig
+from .citation_service import CitationService
 from ..core.config import settings
+from .citation_tracker import CitationTracker
+from ..models.citation_tracker import CitationConfig, ChunkCitation, InlineCitation
 from ..models.document import GeneratedSection, RefinementRequest
 import uuid
 import asyncio
@@ -30,8 +32,11 @@ Content Formatting Guidelines:
 - Include bullet points (-) and numbered lists where appropriate
 - Generate 800-1000 words but ensure all content comes from the source material
 - Include references [1], [2] when citing specific sources
-- Use **bold** sparingly, only for key terms or important concepts
+- Use **bold** sparingly, only for key terms or important concepts  
 - Ensure proper paragraph breaks for readability
+- DO NOT include a "References" section or list at the end - citations will be compiled separately
+- DO NOT add any bibliography, reference list, or sources section
+- ABSOLUTELY NO references section of any kind (##References, Bibliography, etc.)
 
 Structure your response with clear subsections that flow logically to address "{section_title}".
 
@@ -62,11 +67,26 @@ class GenerationService:
             max_tokens=2048,
             temperature=0.7
         )
+        # Initialize citation service and tracker with config
+        self.citation_service = CitationService()
+        self.citation_tracker = CitationTracker(CitationConfig())
 
-    async def synthesize_section(self, section_title: str, rag_service: RAGService, use_graph_mode: str = "local") -> GeneratedSection:
+    async def synthesize_section(self, section_title: str, rag_service: RAGService, use_graph_mode: str = "local", session_id: str = "default", document_id: str = None) -> GeneratedSection:
         """Generate a section using RAG and LLM"""
         try:
             print(f"🔍 Generating section: '{section_title}'")
+            
+            # Create or get citation registry for this session/document
+            if document_id is None:
+                document_id = f"{session_id}-{section_title.replace(' ', '-').lower()}"
+            
+            print(f"🔍 Looking for citation registry with document_id: {document_id}")
+            citation_registry = self.citation_tracker.get_registry(document_id)
+            if not citation_registry:
+                print(f"✅ Creating new citation registry for document_id: {document_id}")
+                citation_registry = self.citation_tracker.create_registry(document_id, session_id)
+            else:
+                print(f"✅ Found existing citation registry with {len(citation_registry.inline_citations)} citations")
             
             # Get relevant content from uploaded documents with expanded search
             retrieved_docs = await rag_service.retrieve_relevant_content(
@@ -153,6 +173,77 @@ Once relevant source material is available, this section can be regenerated with
                 else:
                     content = str(response)
                 
+                # Remove any References sections that the LLM might have generated
+                content = self._remove_references_from_content(content)
+                
+                # Process citations from RAG metadata directly
+                print(f"🔗 Processing citations for '{section_title}' using RAG metadata...")
+                try:
+                    # Store citation numbers for content insertion
+                    new_citation_numbers = []
+                    
+                    for i, doc in enumerate(retrieved_docs):
+                        # Create chunk citation from RAG metadata
+                        metadata = doc.get('metadata', {})
+                        chunk_citation = ChunkCitation(
+                            chunk_id=f"{document_id}-chunk-{uuid.uuid4()}",  # Use unique ID
+                            pdf_name=doc.get('source', metadata.get('source', f'Document {i+1}')),
+                            page_number=metadata.get('page', 1),
+                            text_excerpt=doc.get('content', '')[:200] + '...' if len(doc.get('content', '')) > 200 else doc.get('content', ''),
+                            authors=metadata.get('authors', []),
+                            external_link=metadata.get('url', '')
+                        )
+                        
+                        print(f"🔗 Creating citation for: {chunk_citation.pdf_name} (page {chunk_citation.page_number})")
+                        
+                        # Add citation to registry (this creates both chunk and inline citation)
+                        inline_citation = citation_registry.add_citation(chunk_citation)
+                        new_citation_numbers.append(inline_citation.citation_number)
+                        print(f"✅ Added citation [{inline_citation.citation_number}] to registry")
+                    
+                    # Add citations to the content at appropriate places
+                    if new_citation_numbers:
+                        # Simple approach: add citations at the end of paragraphs
+                        paragraphs = content.split('\n\n')
+                        processed_paragraphs = []
+                        
+                        for i, paragraph in enumerate(paragraphs):
+                            if paragraph.strip() and len(paragraph.strip()) > 50:
+                                if i < len(new_citation_numbers):
+                                    # Add one citation per paragraph
+                                    citation_ref = f" [{new_citation_numbers[i]}]"
+                                    if paragraph.rstrip().endswith('.'):
+                                        paragraph = paragraph.rstrip()[:-1] + citation_ref + '.'
+                                    else:
+                                        paragraph = paragraph.rstrip() + citation_ref
+                                elif i == len(paragraphs) - 1 and len(new_citation_numbers) > 1:
+                                    # Add remaining citations as individual citations to the last paragraph
+                                    remaining_citations = [str(num) for num in new_citation_numbers[1:]]
+                                    if remaining_citations:
+                                        # Add each citation individually with proper spacing
+                                        individual_citations = ' '.join([f"[{num}]" for num in remaining_citations])
+                                        citation_ref = f" {individual_citations}"
+                                        if paragraph.rstrip().endswith('.'):
+                                            paragraph = paragraph.rstrip()[:-1] + citation_ref + '.'
+                                        else:
+                                            paragraph = paragraph.rstrip() + citation_ref
+                                            
+                                print(f"📝 Added citation {new_citation_numbers[min(i, len(new_citation_numbers)-1)] if i < len(new_citation_numbers) else 'N/A'} to paragraph {i+1}")
+                            
+                            processed_paragraphs.append(paragraph)
+                        
+                        content = '\n\n'.join(processed_paragraphs)
+                    
+                    print(f"✅ Added {len(retrieved_docs)} citations from RAG sources for '{section_title}'")
+                    print(f"🔗 Citation registry now has {len(citation_registry.inline_citations)} total citations")
+                    for citation in citation_registry.inline_citations:
+                        print(f"  [{citation.citation_number}] {citation.chunk_citation.pdf_name} (page {citation.chunk_citation.page_number})")
+                except Exception as citation_error:
+                    print(f"⚠️ Citation processing failed for '{section_title}': {citation_error}")
+                    import traceback
+                    traceback.print_exc()
+                    # Continue with original content if citation processing fails
+                
                 source_count = len(retrieved_docs)
                 print(f"✅ Generated {len(content)} chars for '{section_title}' using {source_count} sources")
             
@@ -221,3 +312,103 @@ Please contact support if this error persists after following the recommended ac
                 
         except Exception as e:
             return f"Error refining section: {str(e)}"
+    
+    def generate_references_section(self, document_id: str) -> str:
+        """Generate a references section for the document"""
+        return self.citation_tracker.generate_references_section(document_id)
+    
+    def get_citation_registry(self, document_id: str):
+        """Get citation registry for a document"""
+        return self.citation_tracker.get_registry(document_id)
+    
+    def get_citation_statistics(self, document_id: str):
+        """Get citation statistics for a document"""
+        registry = self.citation_tracker.get_registry(document_id)
+        if not registry:
+            return None
+        
+        return {
+            "document_id": document_id,
+            "total_citations": len(registry.inline_citations),
+            "unique_sources": len(set(cite.chunk_citation.pdf_name for cite in registry.inline_citations)),
+            "citation_style": registry.citation_style,
+            "sources": [cite.chunk_citation.pdf_name for cite in registry.inline_citations],
+            "auto_references_enabled": registry.auto_generate_references
+        }
+    
+    def export_citations(self, document_id: str, format: str):
+        """Export citations in specified format"""
+        registry = self.citation_tracker.get_registry(document_id)
+        if not registry:
+            return None
+        
+        if format == "json":
+            import json
+            return json.dumps({
+                "document_id": document_id,
+                "citations": [
+                    {
+                        "citation_number": cite.citation_number,
+                        "text": cite.chunk_citation.text_excerpt,
+                        "source": cite.chunk_citation.pdf_name,
+                        "page": cite.chunk_citation.page_number
+                    }
+                    for cite in registry.inline_citations
+                ]
+            })
+        elif format == "bibtex":
+            # Simple BibTeX format
+            entries = []
+            for cite in registry.inline_citations:
+                entries.append(f"""@misc{{cite{cite.citation_number},
+  title={{{cite.chunk_citation.text_excerpt[:50]}...}},
+  author={{{', '.join(cite.chunk_citation.authors) if cite.chunk_citation.authors else 'Unknown'}}},
+  note={{p. {cite.chunk_citation.page_number}}}
+}}""")
+            return '\n\n'.join(entries)
+        
+        return None
+    
+    def _remove_references_from_content(self, content: str) -> str:
+        """Remove any References sections that the LLM might have generated"""
+        import re
+        
+        # Remove References sections and everything after them
+        # Pattern matches various forms of References headers
+        patterns = [
+            r'\n\s*#+\s*References.*$',              # ## References or # References
+            r'\n\s*#+\s*REFERENCES.*$',              # ## REFERENCES or # REFERENCES
+            r'\n\s*References\s*\n.*$',              # References as standalone line
+            r'\n\s*REFERENCES\s*\n.*$',              # REFERENCES as standalone line
+            r'\n\s*References:\s*\n.*$',             # References: as standalone line
+            r'\n\s*REFERENCES:\s*\n.*$',             # REFERENCES: as standalone line
+            r'\n\s*Bibliography.*$',                 # Bibliography section
+            r'\n\s*BIBLIOGRAPHY.*$',                 # BIBLIOGRAPHY section
+            r'\n\s*Sources.*$',                      # Sources section
+            r'\n\s*SOURCES.*$',                      # SOURCES section
+            r'\n\s*Reference\s+List.*$',             # Reference List section
+            r'\n\s*REFERENCE\s+LIST.*$',             # REFERENCE LIST section
+            r'\n\s*\*\*References\*\*.*$',           # **References** markdown bold
+            r'\n\s*\*\*REFERENCES\*\*.*$',           # **REFERENCES** markdown bold
+            r'\n\s*#+\s*Bibliography.*$',            # ## Bibliography 
+            r'\n\s*#+\s*Reference List.*$',          # ## Reference List
+            r'\n\s*Reference List\s*\n.*$',          # Reference List as standalone
+            r'\n\s*#+\s*Citations.*$',               # ## Citations
+            r'\n\s*Citations\s*\n.*$'                # Citations as standalone line
+        ]
+        
+        for pattern in patterns:
+            content = re.sub(pattern, '', content, flags=re.DOTALL | re.MULTILINE)
+        
+        # Also remove any trailing reference lists that might not have a header
+        # Look for patterns like [1] Author. Title. at the end of content
+        ref_list_patterns = [
+            r'\n\s*\[\d+\]\s+[^\n]+\.[^\n]*(\n\s*\[\d+\]\s+[^\n]+\.[^\n]*)*\s*$',  # [1] Author format
+            r'\n\s*\d+\.\s+[^\n]+\.[^\n]*(\n\s*\d+\.\s+[^\n]+\.[^\n]*)*\s*$',      # 1. Author format
+            r'\n\s*\([0-9]+\)\s+[^\n]+\.[^\n]*(\n\s*\([0-9]+\)\s+[^\n]+\.[^\n]*)*\s*$'  # (1) Author format
+        ]
+        
+        for pattern in ref_list_patterns:
+            content = re.sub(pattern, '', content, flags=re.MULTILINE)
+        
+        return content.strip()

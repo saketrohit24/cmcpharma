@@ -16,6 +16,7 @@ class GeneratedDocument(BaseModel):
     template_id: str
     session_id: str
     generated_at: datetime = Field(default_factory=datetime.now)
+    citations: Optional[List[Dict[str, Any]]] = []
 
 class RefinementRequest(BaseModel):
     section_title: str

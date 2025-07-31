@@ -1,4 +1,4 @@
-import React, { createContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { backendApi } from '../services/backendApi';
 
@@ -11,6 +11,7 @@ export interface UploadedFile {
   category: 'specification' | 'protocol' | 'report' | 'certificate' | 'other';
   status: 'uploaded' | 'processing' | 'ready' | 'error';
   backendPath?: string; // Path on backend for the uploaded file
+  sessionId?: string; // Backend session ID for this file
 }
 
 export interface FileContextType {
@@ -35,39 +36,6 @@ interface FileProviderProps {
 
 export const FileProvider: React.FC<FileProviderProps> = ({ children }) => {
   const [files, setFiles] = useState<UploadedFile[]>([]);
-
-  // Load files from localStorage on component mount
-  useEffect(() => {
-    const loadPersistedFiles = () => {
-      try {
-        const savedFiles = localStorage.getItem('cmc_uploaded_files');
-        if (savedFiles) {
-          const parsedFiles = JSON.parse(savedFiles);
-          // Convert uploadedAt back to Date objects
-          const restoredFiles = parsedFiles.map((file: UploadedFile & { uploadedAt: string }) => ({
-            ...file,
-            uploadedAt: new Date(file.uploadedAt)
-          }));
-          setFiles(restoredFiles);
-          console.log('📁 Restored', restoredFiles.length, 'files from localStorage');
-        }
-      } catch (error) {
-        console.error('Failed to load persisted files:', error);
-      }
-    };
-
-    loadPersistedFiles();
-  }, []);
-
-  // Save files to localStorage whenever files change
-  useEffect(() => {
-    try {
-      localStorage.setItem('cmc_uploaded_files', JSON.stringify(files));
-      console.log('📁 Saved', files.length, 'files to localStorage');
-    } catch (error) {
-      console.error('Failed to save files to localStorage:', error);
-    }
-  }, [files]);
 
   const getFileTypeFromExtension = (filename: string): string => {
     const ext = filename.split('.').pop()?.toLowerCase();
@@ -128,7 +96,8 @@ export const FileProvider: React.FC<FileProviderProps> = ({ children }) => {
             f.id === localFile.id ? { 
               ...f, 
               status: 'ready',
-              backendPath: response.data?.path 
+              backendPath: response.data?.path,
+              sessionId: backendApi.getSessionId()
             } : f
           ));
         } else {

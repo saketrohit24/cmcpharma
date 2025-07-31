@@ -47,6 +47,12 @@
     align-items: center;
 }
 
+.content-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .modified-text {
     font-size: 11px;
     color: #059669;
@@ -197,6 +203,17 @@
 .edit-btn-primary:hover {
     background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
     border-color: #1d4ed8;
+}
+
+.edit-btn-secondary {
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+    color: white;
+    border: 1px solid #7c3aed;
+}
+
+.edit-btn-secondary:hover {
+    background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+    border-color: #6d28d9;
 }
 
 .edit-btn-success {

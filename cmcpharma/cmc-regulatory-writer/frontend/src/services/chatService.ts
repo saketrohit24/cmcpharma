@@ -10,7 +10,6 @@ export interface LocalChatMessage {
   sender: 'user' | 'assistant';
   timestamp: Date;
   isTyping?: boolean;
-  citations?: string[];
 }
 
 export interface ChatServiceOptions {
@@ -63,6 +62,9 @@ class ChatService {
           message,
           session_id: currentSession,
           use_rag: useRAG,
+          max_tokens: 1000,
+          temperature: 0.7,
+          include_citations: true,
           context: undefined // Remove context for now to avoid type mismatch
         };
 
@@ -76,8 +78,7 @@ class ChatService {
             id: response.data.message.id,
             text: response.data.message.text,
             sender: 'assistant',
-            timestamp: new Date(response.data.message.timestamp),
-            citations: response.data.citations || undefined
+            timestamp: new Date(response.data.message.timestamp)
           };
 
           this.addMessageToSession(currentSession, assistantMessage);
@@ -105,14 +106,14 @@ class ChatService {
     onError: (error: string) => void,
     options: ChatServiceOptions = {}
   ): Promise<void> {
-    const { sessionId } = options;
+    const { sessionId, useRAG = true } = options;
     
     try {
       const request: ChatRequest = {
         message,
         session_id: sessionId || this.currentSessionId || undefined,
-        use_rag: options.useRAG !== undefined ? options.useRAG : true,
-        context: undefined // Remove context for now to avoid type mismatch
+        context: '',
+        use_rag: useRAG
       };
 
       const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8001'}/api/chat/message/stream`, {
@@ -160,8 +161,7 @@ class ChatService {
                     id: data.message.id,
                     text: data.message.text,
                     sender: 'assistant',
-                    timestamp: new Date(data.message.timestamp),
-                    citations: data.citations || undefined
+                    timestamp: new Date(data.message.timestamp)
                   };
                   
                   if (data.message.session_id) {
@@ -182,7 +182,9 @@ class ChatService {
         }
       }
     } catch (error) {
-      onError(error instanceof Error ? error.message : 'Unknown error occurred');
+      console.error('Streaming error details:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      onError(`Streaming failed: ${errorMessage}. Falling back to regular mode.`);
     }
   }
 

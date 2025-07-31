@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Edit3, Save, X, RotateCcw } from 'lucide-react';
+import { CitationDisplay, getGlobalCitationDisplay } from '../../services/citationDisplay';
 
 interface Citation {
   id: number;
@@ -30,13 +31,36 @@ export const EditableContent: React.FC<EditableContentProps> = ({
   const [editContent, setEditContent] = useState(content);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const [citationDisplay] = useState(() => getGlobalCitationDisplay());
+
+  // Ensure citation styles are loaded
+  useEffect(() => {
+    // Check if citation styles are already loaded
+    const existingStyle = document.getElementById('citation-styles');
+    if (!existingStyle) {
+      const style = document.createElement('style');
+      style.id = 'citation-styles';
+      style.textContent = CitationDisplay.getCSSStyles();
+      document.head.appendChild(style);
+    }
+  }, []);
 
   // Update edit content when props change
   useEffect(() => {
+    console.log('🔄 EditableContent: useEffect triggered', {
+      sectionId,
+      isEditing,
+      contentLength: content.length,
+      contentPreview: content.substring(0, 100) + '...'
+    });
+    
     if (!isEditing) {
+      console.log('✅ EditableContent: Updating editContent with new content');
       setEditContent(content);
+    } else {
+      console.log('⏸️ EditableContent: Skipping content update because isEditing=true');
     }
-  }, [content, isEditing]);
+  }, [content, isEditing, sectionId]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -79,23 +103,8 @@ export const EditableContent: React.FC<EditableContentProps> = ({
     }
   };
 
-  // Default citations if none provided
-  const defaultCitations: Citation[] = [
-    {
-      id: 1,
-      text: "Manufacturing process validated according to ICH Q7",
-      source: "process_validation.pdf",
-      page: 24
-    },
-    {
-      id: 2,
-      text: "ICH Q6A: Specifications: Test Procedures and Acceptance Criteria",
-      source: "ICH_Q6A_Guideline.pdf",
-      page: 1
-    }
-  ];
-
-  const citationsToUse = citations.length > 0 ? citations : defaultCitations;
+  // Use only the provided citations - no default fallback
+  const citationsToUse = citations;
 
   const renderContentWithCitations = (textContent: string) => {
     // Enhanced markdown processing for regulatory content
@@ -138,15 +147,24 @@ export const EditableContent: React.FC<EditableContentProps> = ({
       return `<ol class="content-ol">${match.replace(/class="content-li-numbered"/g, 'class="content-li"')}</ol>`;
     });
     
-    // Replace citation markers with interactive components
-    processedContent = processedContent.replace(/\[(\d+)\]/g, (match, num) => {
-      const citationNum = parseInt(num);
-      const citation = citationsToUse.find(c => c.id === citationNum);
-      if (citation) {
-        return `<span class="citation-marker" data-citation-id="${citationNum}">[${num}]</span>`;
-      }
-      return match;
-    });
+    // Process citations using CitationDisplay service with actual citation data
+    if (citationsToUse && citationsToUse.length > 0) {
+      const citationData = citationsToUse.map((citation) => ({
+        citation_number: citation.id,
+        hover_content: `${citation.text} - ${citation.source}, p. ${citation.page}`,
+        reference_id: `ref-${citation.id}`,
+        cite_id: `cite-${citation.id}`,
+        chunk_citation: {
+          chunk_id: citation.sourceFileId || `chunk-${citation.id}`,
+          pdf_name: citation.source,
+          page_number: citation.page,
+          text_excerpt: citation.text,
+          authors: [],
+          external_link: undefined
+        }
+      }));
+      processedContent = citationDisplay.processContentWithCitations(processedContent, citationData);
+    }
 
     // Split content into paragraphs and wrap properly
     const paragraphs = processedContent.split('\n\n').filter(p => p.trim());
@@ -183,6 +201,15 @@ export const EditableContent: React.FC<EditableContentProps> = ({
 
   return (
     <div className="editable-content-container">
+      {(() => {
+        console.log('🎯 EditableContent RENDER:', {
+          sectionId,
+          isEditing,
+          contentLength: content.length,
+          contentPreview: content.substring(0, 100) + '...'
+        });
+        return null;
+      })()}
       {/* Unified Content Area */}
       <div 
         className={`editable-content ${isEditing ? 'editing' : ''}`}
@@ -247,14 +274,16 @@ export const EditableContent: React.FC<EditableContentProps> = ({
               <div className="content-title-area">
                 {isEdited && <span className="modified-text">Modified</span>}
               </div>
-              <button
-                onClick={handleEdit}
-                className="edit-btn edit-btn-primary"
-                title="Edit this section"
-              >
-                <Edit3 size={16} />
-                <span>Edit</span>
-              </button>
+              <div className="content-actions">
+                <button
+                  onClick={handleEdit}
+                  className="edit-btn edit-btn-primary"
+                  title="Edit this section manually"
+                >
+                  <Edit3 size={16} />
+                  <span>Edit</span>
+                </button>
+              </div>
             </div>
             <div className="content-display">
               {renderContentWithCitations(content)}
@@ -264,12 +293,12 @@ export const EditableContent: React.FC<EditableContentProps> = ({
       </div>
 
       {/* Citations Reference */}
-      {citationsToUse.length > 0 && !isEditing && (
+      {citationsToUse && citationsToUse.length > 0 && !isEditing && (
         <div className="citations-reference">
           <h4 className="citations-title">References</h4>
           <div className="citations-list">
             {citationsToUse.map((citation) => (
-              <div key={citation.id} className="citation-item">
+              <div key={citation.id} className="citation-item" id={`ref-${citation.id}`}>
                 <span className="citation-number">[{citation.id}]</span>
                 <div className="citation-details">
                   <span className="citation-source">{citation.source}</span>

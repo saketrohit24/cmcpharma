@@ -49,44 +49,6 @@ export class LLMService {
     }
   }
 
-  private buildPrompt(template: Template): string {
-    const tocText = this.formatTOCForPrompt(template.toc);
-    
-    return `You are an expert CMC (Chemistry, Manufacturing, and Controls) regulatory writer. 
-    
-Template: ${template.name}
-Description: ${template.description}
-
-Table of Contents:
-${tocText}
-
-Generate comprehensive, professional content for each section following these guidelines:
-1. Use regulatory-appropriate language and terminology
-2. Include specific technical details relevant to each section
-3. Follow ICH guidelines and FDA requirements
-4. Ensure content is submission-ready
-5. Include placeholders for company-specific information where needed
-6. Make content 200-400 words per section
-7. Use proper regulatory formatting
-
-For each section, provide:
-- Detailed technical content
-- Relevant regulatory considerations
-- Appropriate cross-references
-- Quality assurance elements
-
-Generate the content in JSON format with this structure:
-{
-  "sections": [
-    {
-      "id": "section-1",
-      "title": "Section Title",
-      "content": "Detailed content..."
-    }
-  ]
-}`;
-  }
-
   private formatTOCForPrompt(toc: TOCItem[]): string {
     return toc.map(item => {
       const indent = '  '.repeat(item.level - 1);

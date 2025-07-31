@@ -1,10 +1,9 @@
 from fastapi import APIRouter, Body, HTTPException
-from ..models.document import GeneratedDocument, RefinementRequest
+from ..models.document import GeneratedDocument, GeneratedSection, RefinementRequest
 from ..models.template import Template
 from ..services.rag_service import RAGService
 from ..services.generation_service import GenerationService
 from ..services.file_manager import FileManager
-from ..services.graph_rag_service import RAGConfig
 from ..core.config import settings
 from datetime import datetime
 import asyncio
@@ -16,29 +15,18 @@ async def generate_document(session_id: str, template: Template = Body(...)):
     """Generates a full regulatory document based on a template and uploaded files."""
     file_manager = FileManager(session_id)
     file_paths = file_manager.get_session_file_paths()
+    
+    print(f"🔍 Generation Debug - Session: {session_id}")
+    print(f"📁 File manager session dir: {file_manager.session_dir}")
+    print(f"📄 Found file paths: {file_paths}")
+    print(f"📊 Number of files: {len(file_paths)}")
 
     if not file_paths:
-        raise HTTPException(status_code=400, detail="No source files found for this session.")
+        print(f"❌ No files found in session {session_id}")
+        raise HTTPException(status_code=400, detail=f"No source files found for session '{session_id}'. Please upload files first.")
 
     try:
-        # Configure GraphRAG if enabled
-        graph_rag_config = None
-        if settings.USE_GRAPH_RAG:
-            graph_rag_config = RAGConfig(
-                working_dir=settings.GRAPH_RAG_WORKING_DIR,
-                chunk_size=settings.GRAPH_RAG_CHUNK_SIZE,
-                chunk_overlap=settings.GRAPH_RAG_CHUNK_OVERLAP,
-                embedding_batch_num=settings.GRAPH_RAG_EMBEDDING_BATCH_NUM,
-                max_async=settings.GRAPH_RAG_MAX_ASYNC,
-                global_max_consider_community=settings.GRAPH_RAG_GLOBAL_MAX_CONSIDER_COMMUNITY,
-                local_search_top_k=settings.GRAPH_RAG_LOCAL_SEARCH_TOP_K
-            )
-        
-        rag_service = RAGService(
-            file_paths=file_paths, 
-            use_graph_rag=settings.USE_GRAPH_RAG,
-            graph_rag_config=graph_rag_config
-        )
+        rag_service = RAGService(file_paths=file_paths)
         generation_service = GenerationService()
         
         # Flatten TOC to get all sections (including nested ones)
@@ -55,18 +43,82 @@ async def generate_document(session_id: str, template: Template = Body(...)):
         
         # Generate sections sequentially to ensure proper content distribution
         generated_sections = []
+        document_id = f"{session_id}-document"  # Create a document-level ID for citation tracking
+        
         for i, toc_item in enumerate(all_sections):
             print(f"Generating section {i+1}/{len(all_sections)}: {toc_item.title}")
-            section = await generation_service.synthesize_section(toc_item.title, rag_service)
+            section = await generation_service.synthesize_section(
+                toc_item.title, 
+                rag_service, 
+                session_id=session_id,
+                document_id=document_id  # Pass document ID to track citations across sections
+            )
             generated_sections.append(section)
         
-        print(f"Generated document with {len(generated_sections)} sections")
+        # Check if any section is already titled "References" - if so, don't add another one
+        existing_references_section = any(
+            section.title.lower().strip() == "references" 
+            for section in generated_sections
+        )
+        
+        # Generate References section automatically only if:
+        # 1. There are citations to reference
+        # 2. No section is already titled "References"
+        references_content = generation_service.generate_references_section(document_id)
+        
+        if references_content and not existing_references_section:
+            references_section = GeneratedSection(
+                title="References",
+                content=references_content,
+                source_count=0  # References don't have their own sources
+            )
+            generated_sections.append(references_section)
+            print(f"📖 Added document-level References section with {len(references_content)} characters")
+        elif existing_references_section:
+            print(f"📖 References section already exists in template - skipping auto-generation")
+        elif not references_content:
+            print(f"📖 No citations found - skipping References section generation")
+        
+        print(f"Generated document with {len(generated_sections)} sections (including References)")
+        
+        # Get citations from the citation tracker
+        print(f"🔍 Looking for citations in registry for document_id: {document_id}")
+        citations_registry = generation_service.citation_tracker.get_registry(document_id)
+        citations_data = []
+        
+        print(f"🔍 Citations registry found: {citations_registry is not None}")
+        if citations_registry:
+            print(f"🔍 Number of inline citations in registry: {len(citations_registry.inline_citations)}")
+        
+        if citations_registry and citations_registry.inline_citations:
+            print(f"🔗 Processing {len(citations_registry.inline_citations)} citations for response")
+            for inline_citation in citations_registry.inline_citations:
+                citation_data = {
+                    "id": inline_citation.citation_number,
+                    "citation_number": inline_citation.citation_number,
+                    "text": inline_citation.chunk_citation.text_excerpt,
+                    "source": inline_citation.chunk_citation.pdf_name,
+                    "page": inline_citation.chunk_citation.page_number,
+                    "hover_content": f"{inline_citation.chunk_citation.text_excerpt[:100]}... - {inline_citation.chunk_citation.pdf_name}, p. {inline_citation.chunk_citation.page_number}",
+                    "chunk_citation": {
+                        "chunk_id": inline_citation.chunk_citation.chunk_id,
+                        "pdf_name": inline_citation.chunk_citation.pdf_name,
+                        "page_number": inline_citation.chunk_citation.page_number,
+                        "text_excerpt": inline_citation.chunk_citation.text_excerpt,
+                        "authors": inline_citation.chunk_citation.authors or [],
+                        "external_link": inline_citation.chunk_citation.external_link
+                    }
+                }
+                citations_data.append(citation_data)
+        
+        print(f"Returning {len(citations_data)} citations with the document")
         
         doc = GeneratedDocument(
             title=template.name,
             template_id=template.id,
             session_id=session_id,
-            sections=generated_sections
+            sections=generated_sections,  # Return all sections separately including References
+            citations=citations_data  # Include actual citations from uploaded documents
         )
         return doc
 

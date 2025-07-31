@@ -281,7 +281,7 @@ const ConnectionTest: React.FC = () => {
       <div className="mt-6 p-4 bg-blue-50 rounded-lg">
         <h3 className="font-semibold mb-2">Connection Information:</h3>
         <div className="text-sm space-y-1">
-          <div><strong>Backend API:</strong> http://localhost:8000</div>
+          <div><strong>Backend API:</strong> http://localhost:8001</div>
           <div><strong>Frontend:</strong> http://localhost:5179</div>
           <div><strong>Session ID:</strong> {backendApi.getSessionId()}</div>
         </div>

@@ -110,8 +110,11 @@ export interface ChatSession {
 export interface ChatRequest {
   message: string;
   session_id?: string;
+  context?: Record<string, string>;
+  max_tokens?: number;
+  temperature?: number;
+  include_citations?: boolean;
   use_rag?: boolean;
-  context?: string;
 }
 
 export interface ChatResponse {

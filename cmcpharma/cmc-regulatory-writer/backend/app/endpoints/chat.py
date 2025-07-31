@@ -14,10 +14,15 @@ from app.services.chat_service import ChatService
 
 router = APIRouter(tags=["chat"])
 
+# Create a single global instance to avoid re-initialization
+_chat_service_instance = None
 
 def get_chat_service() -> ChatService:
-    """Dependency to get chat service instance"""
-    return ChatService()
+    """Dependency to get chat service instance - using singleton pattern for performance"""
+    global _chat_service_instance
+    if _chat_service_instance is None:
+        _chat_service_instance = ChatService()
+    return _chat_service_instance
 
 
 @router.post("/sessions", response_model=ChatSession)
@@ -204,7 +209,7 @@ async def stream_chat_session(
             # Ensure the session ID matches
             chat_request.session_id = session_id
 
-            async for response in chat_service.stream_messages(chat_request):
+            async for response in chat_service.stream_message(chat_request):
                 yield f"data: {json.dumps(response.dict())}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"

@@ -6,6 +6,7 @@ import re
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from app.models.citation import Citation, CitationCreate, CitationUpdate, CitationSearch
+from app.models.citation_tracker import DocumentCitationRegistry, InlineCitation, ChunkCitation
 
 
 class CitationService:
@@ -458,3 +459,97 @@ class CitationService:
             self.citations_storage[citation.id] = citation
         
         self.citation_counter = len(sample_citations) + 1
+    
+    def process_content_citations(self, content: str, retrieved_docs: List[Dict], citation_registry: DocumentCitationRegistry) -> str:
+        """Process content to add inline citations based on retrieved documents"""
+        try:
+            print(f"🔗 Processing citations for content with {len(retrieved_docs)} retrieved documents")
+            
+            if not retrieved_docs:
+                print("⚠️ No retrieved documents to process for citations")
+                return content
+            
+            processed_content = content
+            
+            # Look for potential citation opportunities in the content
+            # This is a simple implementation - find sentences that could benefit from citations
+            sentences = re.split(r'(?<=[.!?])\s+', content)
+            
+            citation_number = len(citation_registry.inline_citations) + 1
+            
+            for i, sentence in enumerate(sentences):
+                # Skip very short sentences
+                if len(sentence.strip()) < 20:
+                    continue
+                
+                # Find the best matching document for this sentence
+                best_match = None
+                best_score = 0
+                
+                for doc in retrieved_docs:
+                    doc_content = doc.get('content', '').lower()
+                    sentence_lower = sentence.lower()
+                    
+                    # Simple keyword matching - count common words
+                    sentence_words = set(re.findall(r'\b\w+\b', sentence_lower))
+                    doc_words = set(re.findall(r'\b\w+\b', doc_content))
+                    common_words = sentence_words.intersection(doc_words)
+                    
+                    # Remove common stop words
+                    stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'shall', 'can'}
+                    meaningful_common = common_words - stop_words
+                    
+                    # Debug output
+                    if len(meaningful_common) >= 1:
+                        print(f"🔍 Sentence: '{sentence[:50]}...' matched {len(meaningful_common)} words with {doc.get('source', 'Unknown')}: {meaningful_common}")
+                    
+                    if len(meaningful_common) > best_score and len(meaningful_common) >= 1:
+                        best_score = len(meaningful_common)
+                        best_match = doc
+                
+                # If we found a good match, add a citation (lowered threshold)
+                if best_match and best_score >= 2:  # Require at least 2 meaningful common words
+                    # Create chunk citation
+                    chunk_citation = ChunkCitation(
+                        chunk_id=f"chunk-{citation_number}",
+                        pdf_name=best_match.get('source', f'Document {citation_number}'),
+                        page_number=best_match.get('page', 1),
+                        text_excerpt=best_match.get('content', '')[:200] + '...' if len(best_match.get('content', '')) > 200 else best_match.get('content', ''),
+                        authors=best_match.get('authors', []),
+                        external_link=best_match.get('url', '')
+                    )
+                    
+                    # Add to registry
+                    citation_registry.add_chunk_citation(chunk_citation)
+                    
+                    # Create inline citation
+                    inline_citation = InlineCitation(
+                        citation_number=citation_number,
+                        chunk_citation=chunk_citation
+                    )
+                    citation_registry.add_inline_citation(inline_citation)
+                    
+                    # Add citation marker to the sentence
+                    citation_marker = f" [{citation_number}]"
+                    if not sentence.rstrip().endswith(citation_marker):
+                        # Find a good place to insert the citation
+                        if sentence.rstrip().endswith('.'):
+                            sentences[i] = sentence.rstrip()[:-1] + citation_marker + '.'
+                        else:
+                            sentences[i] = sentence.rstrip() + citation_marker
+                    
+                    citation_number += 1
+                    
+                    print(f"✅ Added citation [{citation_number-1}] for document: {best_match.get('source', 'Unknown')}")
+            
+            # Reconstruct content with citations
+            processed_content = ' '.join(sentences)
+            
+            print(f"🔗 Citation processing complete. Added {citation_number - len(citation_registry.inline_citations) - 1} citations")
+            return processed_content
+            
+        except Exception as e:
+            print(f"❌ Error processing citations: {e}")
+            import traceback
+            traceback.print_exc()
+            return content  # Return original content if processing fails

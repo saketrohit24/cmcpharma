@@ -134,12 +134,24 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
 
   // Debug effect to track editedSections changes
   useEffect(() => {
-    console.log('📝 editedSections state changed:', editedSections);
-    console.log('📝 Keys in editedSections:', Object.keys(editedSections));
+    console.log('📝 DocumentEditor: editedSections state changed:', editedSections);
+    console.log('📝 DocumentEditor: Keys in editedSections:', Object.keys(editedSections));
+    console.log('📝 DocumentEditor: Current activeTabId:', activeTabId);
     if (activeSection) {
-      console.log('📝 Content for active section:', activeSection.id, ':', editedSections[activeSection.id] || 'NOT FOUND');
+      console.log('📝 DocumentEditor: Active section:', { id: activeSection.id, title: activeSection.title });
+      console.log('📝 DocumentEditor: Content for active section:', {
+        hasEditedContent: !!editedSections[activeSection.id],
+        editedContentLength: editedSections[activeSection.id]?.length || 0,
+        originalContentLength: activeSection.content.length
+      });
+      
+      if (editedSections[activeSection.id]) {
+        console.log('✅ DocumentEditor: Using EDITED content for section', activeSection.id);
+      } else {
+        console.log('ℹ️ DocumentEditor: Using ORIGINAL content for section', activeSection.id);
+      }
     }
-  }, [editedSections, activeSection]);
+  }, [editedSections, activeSection, activeTabId]);
 
   if (isGenerating) {
     return (
@@ -209,15 +221,25 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({
             <SpecificationTable />
           ) : (
             <div className="section-content" ref={contentRef}>
-              <EditableContent
-                key={`${activeSection.id}-${editedSections[activeSection.id] ? 'edited' : 'original'}`}
-                content={editedSections[activeSection.id] || activeSection.content}
-                citations={citations}
-                sectionId={activeSection.id}
-                isEdited={!!editedSections[activeSection.id]}
-                onSave={handleSectionEdit}
-                onRevert={handleSectionRevert}
-              />
+              {(() => {
+                const contentToUse = editedSections[activeSection.id] || activeSection.content;
+                console.log('🎯 DocumentEditor RENDER: About to render content for section', activeSection.id);
+                console.log('📝 DocumentEditor RENDER: Using edited content?', !!editedSections[activeSection.id]);
+                console.log('📝 DocumentEditor RENDER: Content length:', contentToUse?.length || 0);
+                console.log('📝 DocumentEditor RENDER: Content preview:', contentToUse?.substring(0, 200) || 'EMPTY');
+                
+                return (
+                  <EditableContent
+                    key={`${activeSection.id}-${editedSections[activeSection.id] ? 'edited' : 'original'}`}
+                    content={contentToUse}
+                    citations={citations}
+                    sectionId={activeSection.id}
+                    isEdited={!!editedSections[activeSection.id]}
+                    onSave={handleSectionEdit}
+                    onRevert={handleSectionRevert}
+                  />
+                );
+              })()}
             </div>
           )}
         </div>

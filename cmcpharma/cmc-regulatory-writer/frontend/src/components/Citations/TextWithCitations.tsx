@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { CitationPopover } from './CitationPopover';
+import { CitationDisplay, getGlobalCitationDisplay } from '../../services/citationDisplay';
 
 interface Citation {
   id: number;
@@ -18,23 +19,20 @@ export const TextWithCitations: React.FC<TextWithCitationsProps> = ({
   content, 
   citations = [] 
 }) => {
-  // Default citations if none provided
-  const defaultCitations: Citation[] = [
-    {
-      id: 1,
-      text: "Manufacturing process validated according to ICH Q7",
-      source: "process_validation.pdf",
-      page: 24
-    },
-    {
-      id: 2,
-      text: "ICH Q6A: Specifications: Test Procedures and Acceptance Criteria",
-      source: "ICH_Q6A_Guideline.pdf",
-      page: 1
-    }
-  ];
+  const [citationDisplay] = useState(() => getGlobalCitationDisplay());
 
-  const citationsToUse = citations.length > 0 ? citations : defaultCitations;
+  // Ensure citation styles are loaded
+  useEffect(() => {
+    const existingStyle = document.getElementById('citation-styles');
+    if (!existingStyle) {
+      const style = document.createElement('style');
+      style.id = 'citation-styles';
+      style.textContent = CitationDisplay.getCSSStyles();
+      document.head.appendChild(style);
+    }
+  }, []);
+  // Use only the provided citations - no default fallback
+  const citationsToUse = citations;
 
   const renderContentWithCitations = () => {
     // Enhanced markdown processing for regulatory content
@@ -137,41 +135,37 @@ export const TextWithCitations: React.FC<TextWithCitationsProps> = ({
     
     processedContent = processedLines.join('\n');
     
-    // Convert line breaks to paragraphs, but preserve HTML structure
+    // Process citations using the unified CitationDisplay service
+    if (citationsToUse && citationsToUse.length > 0) {
+      const citationData = citationsToUse.map((citation) => ({
+        citation_number: citation.id,
+        hover_content: `${citation.text} - ${citation.source}, p. ${citation.page}`,
+        reference_id: `ref-${citation.id}`,
+        cite_id: `cite-${citation.id}`,
+        chunk_citation: {
+          chunk_id: citation.sourceFileId || `chunk-${citation.id}`,
+          pdf_name: citation.source,
+          page_number: citation.page,
+          text_excerpt: citation.text,
+          authors: [],
+          external_link: undefined
+        }
+      }));
+      
+      processedContent = citationDisplay.processContentWithCitations(processedContent, citationData);
+    }
+    
+    // Convert line breaks to paragraphs, but preserve HTML structure  
     const sections = processedContent.split(/\n\s*\n/).filter(s => s.trim());
     
     return sections.map((section, sectionIndex) => {
-      const citationRegex = /\[(\d+)\]/g;
-      const parts = section.split(citationRegex);
-      
-      const renderedContent = parts.map((part, index) => {
-        const citationNumber = parseInt(part);
-        
-        if (!isNaN(citationNumber) && citationsToUse[citationNumber - 1]) {
-          return (
-            <CitationPopover
-              key={`citation-${sectionIndex}-${index}`}
-              number={citationNumber}
-              citation={citationsToUse[citationNumber - 1]}
-            />
-          );
-        }
-        
-        // Render HTML content
-        if (part.includes('<')) {
-          return <span key={`html-${sectionIndex}-${index}`} dangerouslySetInnerHTML={{ __html: part }} />;
-        }
-        
-        return <span key={`text-${sectionIndex}-${index}`}>{part}</span>;
-      });
-      
       // If the section contains block-level HTML, render as div, otherwise as paragraph
       const hasBlockElements = section.includes('<h') || section.includes('<ul') || section.includes('<table');
       const WrapperTag = hasBlockElements ? 'div' : 'p';
       
       return (
         <WrapperTag key={`section-${sectionIndex}`} className="content-paragraph">
-          {renderedContent}
+          <span dangerouslySetInnerHTML={{ __html: section }} />
         </WrapperTag>
       );
     });

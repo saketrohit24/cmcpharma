@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Upload, BookOpen, Clock, Plus, Settings, Wifi, Trash2 } from 'lucide-react';
+import { FileText, Upload, BookOpen, Clock, Plus, Settings, Wifi, Quote } from 'lucide-react';
 
 interface Tab {
   id: string;
@@ -16,11 +16,10 @@ interface FileItem {
 }
 
 interface HeaderProps {
-  currentView?: 'editor' | 'files' | 'templates' | 'history' | 'connection-test';
-  onViewChange?: (view: 'editor' | 'files' | 'templates' | 'history' | 'connection-test') => void;
+  currentView?: 'editor' | 'files' | 'templates' | 'history' | 'connection-test' | 'citations';
+  onViewChange?: (view: 'editor' | 'files' | 'templates' | 'history' | 'connection-test' | 'citations') => void;
   onNewDocument?: () => void;
   onOpenSettings?: () => void;
-  onClearDocument?: () => void;
   projectStructure?: FileItem[];
   projectName?: string;
   activeTabId?: string;
@@ -32,7 +31,6 @@ export const Header: React.FC<HeaderProps> = ({
   onViewChange,
   onNewDocument,
   onOpenSettings,
-  onClearDocument,
   projectStructure = [],
   projectName = "Regulatory Document Management",
   activeTabId,
@@ -138,6 +136,13 @@ export const Header: React.FC<HeaderProps> = ({
               <Wifi size={16} />
               Connection Test
             </button>
+            <button 
+              className={`nav-tab ${currentView === 'citations' ? 'active' : ''}`}
+              onClick={() => onViewChange?.('citations')}
+            >
+              <Quote size={16} />
+              Citations
+            </button>
           </div>
         </div>
         <div className="header-right">
@@ -147,14 +152,6 @@ export const Header: React.FC<HeaderProps> = ({
             title="LLM Settings"
           >
             <Settings size={16} />
-          </button>
-          <button 
-            className="btn btn-secondary"
-            onClick={() => onClearDocument?.()}
-            title="Clear Document & Start Fresh"
-          >
-            <Trash2 size={16} />
-            Clear
           </button>
           <button 
             className="btn btn-primary"

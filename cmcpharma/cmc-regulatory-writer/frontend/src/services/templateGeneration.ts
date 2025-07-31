@@ -1,6 +1,5 @@
 import type { Template, TOCItem } from '../components/Templates/TemplateManagerPage';
-import { llmService } from './llmService';
-import { backendApi, type GeneratedDocument as BackendGeneratedDocument, type TemplateCreationRequest, type RefinementRequest, type Template as BackendTemplate, type TOCItem as BackendTOCItem } from './backendApi';
+import { backendApi, type GeneratedDocument as BackendGeneratedDocument, type TemplateCreationRequest, type Template as BackendTemplate, type TOCItem as BackendTOCItem } from './backendApi';
 
 interface GeneratedSection {
   id: string;
@@ -30,6 +29,7 @@ export class TemplateGenerationService {
   private static instance: TemplateGenerationService;
   private useLLM: boolean = false;
   private useBackend: boolean = true; // Enable backend by default
+  private uploadedFiles: any[] = []; // Store uploaded files for generation
 
   private constructor() {}
 
@@ -44,13 +44,23 @@ export class TemplateGenerationService {
   setLLMMode(enabled: boolean, apiKey?: string) {
     this.useLLM = enabled;
     if (enabled && apiKey) {
-      llmService.setApiKey(apiKey);
+      // llmService.setApiKey(apiKey);
     }
   }
 
   // Enable/disable backend usage
   setBackendMode(enabled: boolean) {
     this.useBackend = enabled;
+  }
+
+  // Set uploaded files for generation (store in localStorage for consistency)
+  setUploadedFiles(files: any[]) {
+    console.log('📁 TemplateGeneration: Setting uploaded files:', files.length);
+    this.uploadedFiles = files;
+    
+    // Store in localStorage for consistency with existing logic
+    localStorage.setItem('cmc_uploaded_files', JSON.stringify(files));
+    console.log('💾 TemplateGeneration: Files stored in localStorage');
   }
 
   // Test backend connection
@@ -110,7 +120,8 @@ export class TemplateGenerationService {
     if (this.useLLM) {
       try {
         // Try LLM generation
-        return await llmService.generateDocumentWithLLM(template);
+        // return await llmService.generateDocumentWithLLM(template);
+        throw new Error('LLM generation not available, using backend generation');
       } catch (error) {
         console.warn('LLM generation failed, falling back to mock generation:', error);
       }
@@ -147,19 +158,58 @@ export class TemplateGenerationService {
       onSectionComplete?: (sectionTitle: string) => void;
     }
   ): Promise<GeneratedDocument> {
-    console.log('TemplateGeneration: Starting document generation with backend...', { template, useBackend: this.useBackend });
+    console.log('🚀 TemplateGeneration: Starting document generation with backend...', { template, useBackend: this.useBackend });
+    console.log('📄 TemplateGeneration: Available uploaded files:', this.uploadedFiles.length);
     
     if (this.useBackend) {
       try {
-        // Use the shared session ID from backendApi instead of creating a new one
+        // First, check if files are uploaded and get the session ID
+        const uploadedFiles = JSON.parse(localStorage.getItem('cmc_uploaded_files') || '[]');
+        console.log('TemplateGeneration: Found uploaded files:', uploadedFiles.length);
+        
+        if (uploadedFiles.length === 0) {
+          console.warn('TemplateGeneration: No uploaded files found. Cannot use backend generation.');
+          throw new Error('No uploaded files available for content generation');
+        }
+        
+        // Use the session ID from backendApi (consistent with file uploads)
         const sessionId = backendApi.getSessionId();
-        console.log('TemplateGeneration: Using existing session ID:', sessionId);
+        console.log('TemplateGeneration: Using session ID from backendApi:', sessionId);
+        console.log('TemplateGeneration: Uploaded files session IDs:', uploadedFiles.map(f => f.sessionId));
+        
+        // Check if files actually exist in the backend for this session
+        const filesCheckResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8001'}/api/files/session/${sessionId}`);
+        if (!filesCheckResponse.ok) {
+          console.warn('TemplateGeneration: Session not found in backend, uploading files...');
+          
+          // Need to upload files to backend first
+          const files = uploadedFiles.filter((f: any) => f.status === 'ready' && f.file);
+          if (files.length === 0) {
+            throw new Error('No ready files available for upload to backend');
+          }
+          
+          // Upload files to backend
+          for (const fileData of files) {
+            const formData = new FormData();
+            formData.append('file', fileData.file);
+            
+            const uploadResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8001'}/api/files/upload/${sessionId}`, {
+              method: 'POST',
+              body: formData
+            });
+            
+            if (!uploadResponse.ok) {
+              throw new Error(`Failed to upload file ${fileData.name} to backend`);
+            }
+            console.log(`TemplateGeneration: Uploaded ${fileData.name} to backend session ${sessionId}`);
+          }
+        }
         
         // Convert frontend template to backend format
         const backendTemplate = this.convertToBackendTemplate(template);
         console.log('TemplateGeneration: Converted template to backend format:', backendTemplate);
         
-        // Call the backend generation endpoint directly with existing session ID
+        // Call the backend generation endpoint with the session ID
         const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8001'}/api/generation/generate/${sessionId}`, {
           method: 'POST',
           headers: {
@@ -326,12 +376,12 @@ All analytical methods have been validated according to ICH Q2(R1) guidelines an
 - Linearity across the working range
 - Robustness under normal operating conditions
 
-### References and Standards
+### Standards and Guidelines
 
 The specifications are established in accordance with:
-- ICH Q6A: Specifications for New Drug Substances and Products
-- Regional pharmacopeial requirements
-- Company analytical development standards
+- ICH Q6A: Specifications for New Drug Substances and Products [1]
+- Regional pharmacopeial requirements [2]
+- Company analytical development standards [3]
 
 *Note: This content has been generated as a template. Please review and update with actual analytical data and validated specifications for your specific product.*`;
     }
@@ -464,13 +514,13 @@ This section includes:
 - Risk assessments and mitigation strategies
 - Regulatory compliance demonstrations
 
-## References and Guidelines
+## Guidelines and Standards
 
 The approach outlined in this section aligns with:
-- Relevant ICH guidelines (Q8, Q9, Q10, Q11, etc.)
-- Regional regulatory guidance documents
-- Industry best practices and standards
-- Company quality management systems
+- Relevant ICH guidelines (Q8, Q9, Q10, Q11, etc.) [1]
+- Regional regulatory guidance documents [2]
+- Industry best practices and standards [3]
+- Company quality management systems [4]
 
 ## Conclusion
 
@@ -510,11 +560,8 @@ The information provided in this section demonstrates compliance with regulatory
 
   private async generateSectionWithLLM(title: string): Promise<string> {
     try {
-      const prompt = `Generate professional regulatory content for the section titled: "${title}". 
-      The content should be comprehensive, technically accurate, and follow pharmaceutical regulatory standards.
-      Include specific details, requirements, and best practices relevant to this section.`;
-      
-      return await llmService.generateText(prompt);
+      // LLM generation not available, using fallback
+      return this.generateSectionContent(title);
     } catch (error) {
       console.warn('LLM generation failed for section, using fallback:', error);
       return this.generateSectionContent(title);
@@ -696,15 +743,23 @@ All testing is performed by qualified personnel using validated equipment and me
       type: 'text' as const // Backend doesn't specify type, default to text
     }));
 
-    // Generate mock citations for now (backend doesn't return citations yet)
-    const citations: GeneratedCitation[] = [
-      {
-        id: 1,
-        text: "Generated based on regulatory guidelines and best practices",
-        source: "CMC Regulatory Writer AI",
-        page: 1
-      }
-    ];
+    // Use actual citations from backend - NO fallback to generic citations
+    let citations: GeneratedCitation[] = [];
+    
+    const backendDocAny = backendDoc as any; // Type assertion for potential citations
+    if (backendDocAny.citations && backendDocAny.citations.length > 0) {
+      // Convert backend citations to frontend format
+      citations = backendDocAny.citations.map((citation: any) => ({
+        id: citation.id || citation.citation_number || 1,
+        text: citation.text || citation.hover_content || "Citation text not available",
+        source: citation.source || (citation.chunk_citation ? citation.chunk_citation.pdf_name : "Unknown source"),
+        page: citation.page || (citation.chunk_citation ? citation.chunk_citation.page_number : 1)
+      }));
+      console.log(`🔗 Converted ${citations.length} citations from backend:`, citations);
+    } else {
+      console.log("⚠️ No citations returned from backend - using empty array");
+      citations = []; // NO FALLBACK - use empty array if no real citations
+    }
 
     return {
       id: backendDoc.id,

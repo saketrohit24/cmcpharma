@@ -10,13 +10,13 @@ import { DocumentHistory } from './components/History/DocumentHistory';
 import { NewDocument } from './components/Export/NewDocument';
 import { LLMConfig } from './components/Settings/LLMConfig';
 import ConnectionTest from './components/ConnectionTest';
-import { SessionDebugPanel } from './components/Debug/SessionDebugPanel';
+import { References } from './components/Citation/References';
 import { sampleCitations, sampleSections } from './components/Editor/sampleData';
 import { FileProvider } from './contexts/FileContext';
 import { useFiles } from './contexts/useFiles';
 import { storage, type StoredDocument } from './services/storage';
 import { templateGenerationService, type GeneratedDocument } from './services/templateGeneration';
-import { type TemplateStructure } from './services/backendApi';
+import { backendApi, type TemplateStructure } from './services/backendApi';
 import { Toaster, toast } from 'react-hot-toast';
 
 interface FileItem {
@@ -28,7 +28,7 @@ interface FileItem {
 }
 
 interface AppState {
-  currentView: 'editor' | 'files' | 'templates' | 'history' | 'connection-test';
+  currentView: 'editor' | 'files' | 'templates' | 'history' | 'connection-test' | 'citations';
   generatedDocument: GeneratedDocument | null;
   showNewDocumentModal: boolean;
   showLLMConfig: boolean;
@@ -119,29 +119,38 @@ function AppContent() {
   useEffect(() => {
     if (state.generatedDocument) {
       console.log('💾 App: Auto-saving app state...');
-      storage.saveAppState({
+      /* storage.saveAppState({
         projectName: state.projectName,
         projectStructure: state.projectStructure,
         activeTabId: state.activeTabId,
         editedSections: state.editedSections
-      });
+      }); */
     }
   }, [state.projectName, state.projectStructure, state.activeTabId, state.editedSections, state.generatedDocument]);
 
-  const handleViewChange = (view: 'editor' | 'files' | 'templates' | 'history' | 'connection-test') => {
+  const handleViewChange = (view: 'editor' | 'files' | 'templates' | 'history' | 'connection-test' | 'citations') => {
     console.log('Switching to view:', view);
     setState(prev => ({ ...prev, currentView: view }));
   };
 
   // Handle editing sections
   const handleEditSection = (sectionId: string, editedContent: string) => {
-    console.log('🔄 App: handleEditSection called with:', { sectionId, editedContent: editedContent.substring(0, 100) + '...' });
+    console.log('🔄 App: handleEditSection called with:', { 
+      sectionId, 
+      editedContentLength: editedContent.length,
+      editedContentPreview: editedContent.substring(0, 100) + '...' 
+    });
+    console.log('🔄 App: Current editedSections before update:', Object.keys(state.editedSections));
+    console.log('🔄 App: Current activeTabId:', state.activeTabId);
     
     setState(prev => {
       const newEditedSections = {
         ...prev.editedSections,
         [sectionId]: editedContent
       };
+      
+      console.log('✅ App: New editedSections after update:', Object.keys(newEditedSections));
+      console.log('✅ App: Updated section content length:', newEditedSections[sectionId]?.length || 0);
       
       // Auto-save edited sections
       storage.saveAppState({
@@ -158,6 +167,36 @@ function AppContent() {
         editedSections: newEditedSections
       };
     });
+  };
+
+  // Handle reverting sections back to original content
+  const handleRevertSection = (sectionId: string) => {
+    console.log('🔄 App: handleRevertSection called for sectionId:', sectionId);
+    console.log('🔄 App: Current editedSections before revert:', Object.keys(state.editedSections));
+    
+    setState(prev => {
+      const newEditedSections = { ...prev.editedSections };
+      delete newEditedSections[sectionId]; // Remove the edited version to revert to original
+      
+      console.log('✅ App: New editedSections after revert:', Object.keys(newEditedSections));
+      
+      // Auto-save edited sections
+      storage.saveAppState({
+        projectName: prev.projectName,
+        projectStructure: prev.projectStructure,
+        activeTabId: prev.activeTabId,
+        editedSections: newEditedSections
+      });
+      
+      console.log('💾 App: Auto-saved reverted sections to localStorage');
+      
+      return {
+        ...prev,
+        editedSections: newEditedSections
+      };
+    });
+    
+    toast.success('Section reverted to original content');
   };
 
   // Clear persisted data and start fresh
@@ -296,6 +335,10 @@ function AppContent() {
       const readyFiles = files.filter(f => f.status === 'ready');
       console.log('Ready files for generation:', readyFiles.length);
       
+      // Set uploaded files in the template generation service
+      templateGenerationService.setUploadedFiles(readyFiles);
+      console.log('Files set in templateGenerationService:', readyFiles.length);
+      
       // Generate document using the enhanced service with progress callbacks
       const generatedDoc = await templateGenerationService.generateDocumentWithProgress(
         template,
@@ -364,10 +407,31 @@ function AppContent() {
           projectStructureIdMap.has(section.title)
         );
 
+        // The backend now automatically handles References sections
         const updatedDocument = {
           ...generatedDoc,
           sections: updatedSections
         };
+
+        // Update project structure to include all generated sections (including References)
+        const updatedProjectStructure = prev.projectStructure ? [...prev.projectStructure] : [];
+        
+        // Find or create a place for the References section
+        const referencesSection = updatedSections.find(section => 
+          section.title.toLowerCase().includes('reference')
+        );
+        
+        if (referencesSection && !projectStructureIdMap.has(referencesSection.title)) {
+          // Add References section to project structure
+          const referencesFileItem: FileItem = {
+            id: referencesSection.id,
+            name: referencesSection.title,
+            type: 'file'
+          };
+          
+          // Add it to the main level (not nested)
+          updatedProjectStructure.push(referencesFileItem);
+        }
 
         // Save the generated document to localStorage
         storage.saveGeneratedDocument(updatedDocument);
@@ -376,10 +440,12 @@ function AppContent() {
           ...prev,
           generatedDocument: updatedDocument,
           projectName: generatedDoc.title,
+          projectStructure: updatedProjectStructure, // Include updated structure with References
           // Set active tab to first matching section ID from project structure
           activeTabId: firstMatchingSection ? (projectStructureIdMap.get(firstMatchingSection.title) || null) : 
                        (updatedSections.length > 0 ? updatedSections[0].id : prev.activeTabId),
           currentView: 'editor', // Switch to editor to show generated content
+          currentDocumentId: `${backendApi.getSessionId()}-document`, // Set the document ID to match backend
           isGenerating: false,
           generationProgress: null
         };
@@ -416,7 +482,6 @@ function AppContent() {
       case 'files':
         return (
           <div>
-            <SessionDebugPanel />
             <FileManagerPage />
           </div>
         );
@@ -424,7 +489,6 @@ function AppContent() {
       case 'templates':
         return (
           <div>
-            <SessionDebugPanel />
             <TemplateManagerPage 
               onGenerateFromTemplate={handleGenerateFromTemplate}
               onStructureChange={handleTemplateStructureChange}
@@ -438,6 +502,16 @@ function AppContent() {
         
       case 'connection-test':
         return <ConnectionTest />;
+      
+      case 'citations':
+        return (
+          <div className="citations-view p-6">
+            <References 
+              documentId={state.currentDocumentId || `${backendApi.getSessionId()}-document`} 
+              className="max-w-4xl mx-auto"
+            />
+          </div>
+        );
       
       case 'editor':
       default:
@@ -458,13 +532,28 @@ function AppContent() {
               generationProgress={state.generationProgress}
               activeTabId={state.activeTabId || undefined}
               editedSections={state.editedSections}
+              onSectionEdit={handleEditSection}
+              onSectionRevert={handleRevertSection}
             />
             <RightPanel 
               onNavigateToTemplates={() => setState(prev => ({ ...prev, currentView: 'templates' }))}
               onNavigateToHistory={() => setState(prev => ({ ...prev, currentView: 'history' }))}
               onNavigateToFiles={() => setState(prev => ({ ...prev, currentView: 'files' }))}
               onGenerateFromTemplate={handleGenerateFromTemplate}
-              currentDocument={null}
+              currentDocument={state.generatedDocument ? {
+                id: state.currentDocumentId || 'generated-doc',
+                title: state.generatedDocument.title || 'Generated Document',
+                docId: state.currentDocumentId || 'generated-doc',
+                sections: state.generatedDocument.sections || [],
+                citations: state.generatedDocument.citations || [],
+                createdAt: state.generatedDocument.generatedAt 
+                  ? (state.generatedDocument.generatedAt instanceof Date 
+                      ? state.generatedDocument.generatedAt.toISOString() 
+                      : new Date(state.generatedDocument.generatedAt).toISOString())
+                  : new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                status: 'draft' as const
+              } : null}
               sections={state.generatedDocument?.sections || sampleSections}
               citations={state.generatedDocument?.citations || sampleCitations}
               activeTabId={state.activeTabId || undefined}
@@ -484,7 +573,6 @@ function AppContent() {
         onViewChange={handleViewChange}
         onNewDocument={handleNewDocument}
         onOpenSettings={handleOpenSettings}
-        onClearDocument={handleNewDocument}
         projectStructure={state.projectStructure}
         projectName={state.projectName}
         activeTabId={state.activeTabId || undefined}

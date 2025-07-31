@@ -12,6 +12,30 @@ interface DocumentCitation {
   page: number;
 }
 
+interface GeneratedDocument {
+  id: string;
+  title: string;
+  sections: DocumentSection[];
+  citations: DocumentCitation[];
+  templateId: string;
+  generatedAt: Date;
+}
+
+interface AppState {
+  projectName: string;
+  projectStructure: FileItem[];
+  activeTabId: string | null;
+  editedSections: {[key: string]: string};
+}
+
+interface FileItem {
+  id: string;
+  name: string;
+  type: 'file' | 'folder';
+  children?: FileItem[];
+  expanded?: boolean;
+}
+
 interface StoredDocument {
   id: string;
   title: string;
@@ -38,106 +62,7 @@ interface SessionData {
   [key: string]: unknown;
 }
 
-export interface GeneratedDocument {
-  id: string;
-  title: string;
-  sections: DocumentSection[];
-  citations: DocumentCitation[];
-  templateId: string;
-  generatedAt: Date;
-  savedAt?: string;
-  [key: string]: unknown;
-}
-
-export interface FileItem {
-  id: string;
-  name: string;
-  type: 'file' | 'folder';
-  children?: FileItem[];
-  expanded?: boolean;
-}
-
-export interface AppState {
-  projectName: string;
-  projectStructure: FileItem[];
-  activeTabId: string | null;
-  editedSections: {[key: string]: string};
-}
-
 export const storage = {
-  // Generated Document Persistence
-  saveGeneratedDocument: (doc: GeneratedDocument) => {
-    try {
-      localStorage.setItem('cmc_generated_document', JSON.stringify({
-        ...doc,
-        savedAt: new Date().toISOString()
-      }));
-      console.log('📄 Generated document saved to localStorage');
-    } catch (error) {
-      console.error('Failed to save generated document:', error);
-    }
-  },
-
-  getGeneratedDocument: (): GeneratedDocument | null => {
-    try {
-      const saved = localStorage.getItem('cmc_generated_document');
-      if (saved) {
-        const doc = JSON.parse(saved);
-        console.log('📄 Retrieved generated document from localStorage');
-        return doc;
-      }
-    } catch (error) {
-      console.error('Failed to retrieve generated document:', error);
-    }
-    return null;
-  },
-
-  clearGeneratedDocument: () => {
-    try {
-      localStorage.removeItem('cmc_generated_document');
-      console.log('📄 Generated document cleared from localStorage');
-    } catch (error) {
-      console.error('Failed to clear generated document:', error);
-    }
-  },
-
-  // Session State Persistence
-  saveAppState: (state: AppState) => {
-    try {
-      const stateToSave = {
-        ...state,
-        savedAt: new Date().toISOString()
-      };
-      localStorage.setItem('cmc_app_state', JSON.stringify(stateToSave));
-      console.log('💾 App state saved to localStorage');
-    } catch (error) {
-      console.error('Failed to save app state:', error);
-    }
-  },
-
-  getAppState: (): AppState | null => {
-    try {
-      const saved = localStorage.getItem('cmc_app_state');
-      if (saved) {
-        const state = JSON.parse(saved);
-        console.log('💾 Retrieved app state from localStorage');
-        return state;
-      }
-    } catch (error) {
-      console.error('Failed to retrieve app state:', error);
-    }
-    return null;
-  },
-
-  clearAppState: () => {
-    try {
-      localStorage.removeItem('cmc_app_state');
-      console.log('💾 App state cleared from localStorage');
-    } catch (error) {
-      console.error('Failed to clear app state:', error);
-    }
-  },
-
   // Document Management
   saveDocument: (doc: StoredDocument) => {
     const docs = storage.getDocuments();
@@ -193,6 +118,47 @@ export const storage = {
   
   clearSession: () => {
     sessionStorage.removeItem('cmc_current_session');
+  },
+
+  // Generated Document Management (for persistence across restarts)
+  saveGeneratedDocument: (document: GeneratedDocument) => {
+    localStorage.setItem('cmc_generated_document', JSON.stringify({
+      ...document,
+      savedAt: new Date().toISOString()
+    }));
+  },
+
+  getGeneratedDocument: (): GeneratedDocument | null => {
+    const stored = localStorage.getItem('cmc_generated_document');
+    if (!stored) return null;
+    
+    const parsed = JSON.parse(stored);
+    // Convert generatedAt back to Date object if it's a string
+    if (parsed.generatedAt && typeof parsed.generatedAt === 'string') {
+      parsed.generatedAt = new Date(parsed.generatedAt);
+    }
+    return parsed;
+  },
+
+  clearGeneratedDocument: () => {
+    localStorage.removeItem('cmc_generated_document');
+  },
+
+  // App State Management (for UI state persistence)
+  saveAppState: (appState: AppState) => {
+    localStorage.setItem('cmc_app_state', JSON.stringify({
+      ...appState,
+      savedAt: new Date().toISOString()
+    }));
+  },
+
+  getAppState: (): AppState | null => {
+    const stored = localStorage.getItem('cmc_app_state');
+    return stored ? JSON.parse(stored) : null;
+  },
+
+  clearAppState: () => {
+    localStorage.removeItem('cmc_app_state');
   }
 };
 
@@ -273,4 +239,4 @@ export const generateSampleData = () => {
   }
 };
 
-export type { StoredDocument, StoredFile, DocumentSection, DocumentCitation, SessionData };
+export type { StoredDocument, StoredFile, DocumentSection, DocumentCitation, SessionData, GeneratedDocument, AppState, FileItem };

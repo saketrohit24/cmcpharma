@@ -151,7 +151,9 @@ class ExportService {
       })),
       template_id: frontendDoc.templateId,
       session_id: backendApi.getSessionId(),
-      generated_at: frontendDoc.generatedAt.toISOString()
+      generated_at: frontendDoc.generatedAt instanceof Date 
+        ? frontendDoc.generatedAt.toISOString() 
+        : new Date(frontendDoc.generatedAt).toISOString()
     };
   }
 

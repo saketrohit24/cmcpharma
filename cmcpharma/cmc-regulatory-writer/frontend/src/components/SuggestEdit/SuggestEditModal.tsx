@@ -299,3 +299,5 @@ export const SuggestEditModal: React.FC<SuggestEditModalProps> = ({
     </div>
   );
 };
+
+export default SuggestEditModal;
