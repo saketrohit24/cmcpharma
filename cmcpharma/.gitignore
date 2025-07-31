@@ -1,0 +1,28 @@
+# Salesforce CLI
+.sfdx/
+
+# Environment variables
+.env
+
+# Node modules
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
