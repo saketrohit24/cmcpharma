@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # Backend service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cmc-backend
+    ports:
+      - "8001:8001"
+    environment:
+      - LLM_API_KEY=${LLM_API_KEY}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///./app.db}
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Persistent storage for uploads and exports
+      - ./backend/persistent_uploads:/app/persistent_uploads
+      - ./backend/temp_exports:/app/temp_exports
+      # Optional: mount local code for development
+      # - ./backend:/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - cmc-network
+
+  # Frontend service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cmc-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - cmc-network
+
+networks:
+  cmc-network:
+    driver: bridge
+
+volumes:
+  # Optional: create named volumes for better data persistence
+  backend_uploads:
+    driver: local
+  backend_exports:
+    driver: local
