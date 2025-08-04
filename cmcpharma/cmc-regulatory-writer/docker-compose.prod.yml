@@ -1,0 +1,86 @@
+# Production Docker Compose configuration
+version: '3.8'
+
+services:
+  # Backend service for production
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cmc-backend-prod
+    restart: always
+    environment:
+      - LLM_API_KEY=${LLM_API_KEY}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///./app.db}
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - backend_uploads:/app/persistent_uploads
+      - backend_exports:/app/temp_exports
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - cmc-network
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  # Frontend service for production
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cmc-frontend-prod
+    ports:
+      - "80:80"
+      - "443:443"  # For HTTPS
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - cmc-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # Optional: Reverse proxy with SSL termination
+  # nginx-proxy:
+  #   image: nginx:alpine
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+  #     - ./nginx/ssl:/etc/nginx/ssl
+  #   depends_on:
+  #     - frontend
+  #   networks:
+  #     - cmc-network
+
+networks:
+  cmc-network:
+    driver: bridge
+
+volumes:
+  backend_uploads:
+    driver: local
+  backend_exports:
+    driver: local

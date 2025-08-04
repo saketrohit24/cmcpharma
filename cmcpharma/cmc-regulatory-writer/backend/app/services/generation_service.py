@@ -8,41 +8,62 @@ from ..models.document import GeneratedSection, RefinementRequest
 import uuid
 import asyncio
 
-# Dynamic prompts based on context
-SECTION_SYNTHESIS_PROMPT = """You are an expert technical writer. Your task is to write a comprehensive section for "{section_title}" based EXCLUSIVELY on the retrieved content from uploaded source documents.
+# Enhanced dynamic prompts for comprehensive content generation
+SECTION_SYNTHESIS_PROMPT = """You are a highly skilled technical writer specializing in regulatory and pharmaceutical documentation. Your task is to write a comprehensive, detailed section for "{section_title}" based EXCLUSIVELY on the retrieved content from uploaded source documents.
 
 Retrieved Content from Source Documents:
 {retrieved_content}
 
 CRITICAL INSTRUCTIONS - READ CAREFULLY:
 1. ONLY use information that is explicitly present in the retrieved content above
-2. Write content that directly addresses "{section_title}" using the source material
+2. Write content that directly addresses "{section_title}" using ALL available source material
 3. NEVER add information not found in the source documents
-4. DO NOT assume this is about pharmaceuticals, drugs, CMC, or manufacturing unless explicitly stated in the source
-5. DO NOT use regulatory boilerplate language unless it appears in the source documents
-6. FOCUS on the actual topics, organizations, and content mentioned in the source material
-7. If the source discusses NIST, cybersecurity, instruments, etc., write about those topics
-8. If the source discusses biology, write about biology
-9. If the source discusses engineering, write about engineering
+4. DO NOT assume context - write based on what the sources actually discuss
+5. FOCUS on the actual topics, organizations, methodologies, and content mentioned in the source material
+6. Extract and synthesize ALL relevant information from the provided sources
+7. Create connections between different pieces of information from multiple sources when appropriate
+8. Provide detailed explanations, methodologies, and technical specifications when available in sources
+
+CONTENT REQUIREMENTS:
+- TARGET LENGTH: 1000-1200 words minimum for comprehensive coverage
+- Write substantive, detailed content that fully explores the topic
+- Include specific data, numbers, percentages, and technical details from sources
+- Provide thorough explanations of methodologies, processes, and procedures
+- Include detailed background information and context when available in sources
+- Cover all relevant subtopics and aspects mentioned in the source material
 
 Content Formatting Guidelines:
-- Start directly with the main content (DO NOT repeat the section title as a header)
-- Use clear, logical structure with subsections
-- Use ## for main subsections, ### for sub-subsections
-- Include bullet points (-) and numbered lists where appropriate
-- Generate 800-1000 words but ensure all content comes from the source material
-- Include references [1], [2] when citing specific sources
-- Use **bold** sparingly, only for key terms or important concepts  
-- Ensure proper paragraph breaks for readability
-- DO NOT include a "References" section or list at the end - citations will be compiled separately
-- DO NOT add any bibliography, reference list, or sources section
-- ABSOLUTELY NO references section of any kind (##References, Bibliography, etc.)
+- Start directly with substantive content (DO NOT repeat the section title as a header)
+- Use clear, hierarchical structure with multiple subsections
+- Use ## for main subsections, ### for sub-subsections, #### for detailed points
+- Include comprehensive bullet points (-) and numbered lists with detailed explanations
+- Use **bold** for key terms, important concepts, and critical findings
+- Use *italics* for emphasis on technical terms and definitions
+- Ensure proper paragraph breaks for readability (minimum 3-4 sentences per paragraph)
+- Include specific quotes and detailed explanations from source material
+- Add detailed technical specifications, measurements, and data when available
+- Include references [1], [2], [3] when citing specific sources throughout the text
+- DO NOT include a "References" section at the end - citations will be compiled separately
 
-Structure your response with clear subsections that flow logically to address "{section_title}".
+STRUCTURE REQUIREMENTS:
+- **Introduction Paragraph**: Comprehensive overview of the topic (100-150 words)
+- **Main Subsections**: 3-5 detailed subsections covering different aspects (200-300 words each)
+- **Technical Details**: Include specific methodologies, procedures, and specifications
+- **Data and Results**: Present quantitative information, findings, and analysis when available
+- **Detailed Explanations**: Provide thorough explanations of complex concepts and processes
+- **Cross-References**: Connect information from multiple sources when relevant
 
-If the retrieved content is insufficient for "{section_title}", state clearly what information is missing and what type of documentation would be needed based on the section title.
+QUALITY STANDARDS:
+- Ensure each paragraph contains substantial, meaningful content
+- Avoid superficial or generic statements
+- Include specific examples, case studies, and detailed procedures from sources
+- Provide comprehensive coverage of all aspects mentioned in source material
+- Maintain professional, technical writing style appropriate for regulatory documentation
+- Use precise terminology and detailed descriptions
 
-Write a comprehensive section about "{section_title}" using ONLY the provided source material:"""
+If the retrieved content is insufficient for a comprehensive 1000+ word section on "{section_title}", clearly state what specific information is missing and what type of detailed documentation would be needed.
+
+Write a comprehensive, detailed section about "{section_title}" using ALL available source material:"""
 
 REFINEMENT_PROMPT = """You are an expert medical regulatory writer. You need to refine the following section based on user feedback.
 
@@ -60,12 +81,13 @@ class GenerationService:
     def __init__(self):
         if not settings.LLM_API_KEY:
             raise ValueError("LLM_API_KEY is not set in the environment.")
-        # Use the same fast model as the chat service
+        # Use Moonshot AI Kimi model for better quality with enhanced settings for longer content
         self.llm = ChatNVIDIA(
-            model="meta/llama-4-scout-17b-16e-instruct", 
-            nvidia_api_key=settings.LLM_API_KEY, 
-            max_tokens=2048,
-            temperature=0.7
+            model="moonshotai/kimi-k2-instruct", 
+            api_key=settings.LLM_API_KEY, 
+            max_tokens=6144,  # Increased for longer, more comprehensive content
+            temperature=0.5,  # Slightly lower for more consistent, detailed output
+            top_p=0.85        # Adjusted for better coherence in long-form content
         )
         # Initialize citation service and tracker with config
         self.citation_service = CitationService()
@@ -88,11 +110,11 @@ class GenerationService:
             else:
                 print(f"✅ Found existing citation registry with {len(citation_registry.inline_citations)} citations")
             
-            # Get relevant content from uploaded documents with expanded search
+            # Get relevant content from uploaded documents with comprehensive search
             retrieved_docs = await rag_service.retrieve_relevant_content(
                 query=section_title,
                 file_paths=[],  # RAG service already has the files
-                top_k=8,  # Increased from 5 to get more context
+                top_k=15,  # Significantly increased for comprehensive content generation
                 mode=use_graph_mode  # Pass GraphRAG mode (local/global)
             )
             
@@ -100,46 +122,61 @@ class GenerationService:
             
             if not retrieved_docs:
                 print(f"⚠️ No relevant documents found for '{section_title}'")
-                content = f"""# {section_title}
+                content = f"""## Information Gap Notice for "{section_title}"
 
-## Information Gap Notice
+**No relevant information was found in the uploaded source documents for this section.** To generate the comprehensive 1000+ word section you've requested, we need substantial source material that directly addresses "{section_title}".
 
-No relevant information was found in the uploaded source documents for the section "{section_title}". This indicates that either:
+### Current Status
+- **Sources Searched**: {len(retrieved_docs) if 'retrieved_docs' in locals() else 'All available'} documents
+- **Content Found**: No relevant material for "{section_title}"
+- **Target Length**: 1000-1200 words (requires substantial source content)
 
-1. The uploaded documents do not contain information relevant to this section topic
-2. Additional source documents may be needed
-3. The section title may need to be refined to better match available content
+### What This Section Requires
 
-## What This Section Should Address
+Based on the section title "{section_title}", a comprehensive section would typically include:
 
-Based on the section title "{section_title}", this section would typically include:
+#### Core Content Areas (200-300 words each)
+1. **Background and Context**: Historical development, regulatory landscape, industry standards
+2. **Technical Specifications**: Detailed methodologies, procedures, and requirements
+3. **Implementation Guidelines**: Step-by-step processes, best practices, and compliance measures
+4. **Data and Analysis**: Quantitative information, case studies, and performance metrics
+5. **Regulatory Considerations**: Compliance requirements, guidelines, and documentation standards
 
-### Key Information Areas
-- Background and context relevant to {section_title.lower()}
-- Technical details and specifications
-- Methodologies and approaches
-- Supporting data and evidence
-- References to authoritative sources
+#### Required Source Material Types
+- **Primary Documentation**: Technical specifications, regulatory guidelines, standard operating procedures
+- **Supporting Data**: Research studies, analytical results, validation reports, case studies
+- **Reference Materials**: Industry standards, regulatory guidance documents, technical literature
+- **Detailed Procedures**: Step-by-step methodologies, testing protocols, quality control measures
 
-### Required Documentation
+### Recommendations for Comprehensive Content Generation
 
-To generate meaningful content for this section, please ensure that your uploaded documents contain:
-- Information directly related to "{section_title}"
-- Supporting technical documentation
-- Relevant data, studies, or analyses
-- Background materials and context
+#### 1. Document Upload Strategy
+- **Upload comprehensive source materials** that contain detailed information about "{section_title}"
+- **Include multiple document types**: technical reports, regulatory guidance, procedures, case studies
+- **Ensure document quality**: Text-searchable PDFs, well-formatted Word documents, clear text files
 
-## Next Steps
+#### 2. Content Requirements
+- **Minimum 5-10 pages** of relevant source material per section
+- **Detailed technical information** including procedures, specifications, and data
+- **Multiple perspectives** from different sources to enable comprehensive synthesis
 
-**Recommended Actions:**
-1. **Review Uploaded Documents**: Verify that your source files contain information relevant to "{section_title}"
-2. **Upload Additional Sources**: If needed, upload additional documents that address this section topic
-3. **Refine Section Title**: Consider whether the section title accurately reflects the content you want to generate
-4. **Check Document Format**: Ensure uploaded files are in supported formats (PDF, DOCX, TXT) and are text-searchable
+#### 3. Section Development Process
+- **Phase 1**: Upload comprehensive source documentation
+- **Phase 2**: System will retrieve and analyze relevant content (targeting 15+ source excerpts)
+- **Phase 3**: Generate detailed 1000+ word section with proper citations and structure
 
-Once relevant source material is available, this section can be regenerated with substantive, document-based content that directly addresses "{section_title}".
+### Expected Output Format
 
-**Note**: This system generates content based on your uploaded documents. Without relevant source material, meaningful section content cannot be produced."""
+Once adequate source material is available, the generated section will include:
+
+- **Comprehensive Introduction** (150-200 words): Overview and context
+- **Multiple Detailed Subsections** (200-300 words each): Covering all aspects found in sources
+- **Technical Details**: Specific procedures, specifications, and methodologies
+- **Data Integration**: Quantitative information and analytical results
+- **Professional Citations**: Proper referencing throughout the content
+- **Structured Format**: Clear hierarchy with headings, subheadings, and organized content
+
+**Next Action Required**: Please upload detailed source documents that contain substantial information about "{section_title}" to enable comprehensive content generation."""
                 source_count = 0
             else:
                 # Log retrieved content for debugging
@@ -147,14 +184,43 @@ Once relevant source material is available, this section can be regenerated with
                 for i, doc in enumerate(retrieved_docs):
                     print(f"  {i+1}. {doc.get('source', 'Unknown')} - {len(doc.get('content', ''))} chars")
                 
-                # Prepare context from retrieved documents with better formatting
+                # Prepare comprehensive context from retrieved documents for detailed content generation
                 context_parts = []
-                for i, doc in enumerate(retrieved_docs):
-                    content_preview = doc.get('content', '')[:200] + '...' if len(doc.get('content', '')) > 200 else doc.get('content', '')
-                    context_parts.append(f"""[Source {i+1}: {doc.get('source', 'Unknown')}]
-{doc.get('content', '')}""")
+                total_content_length = 0
                 
-                context_text = "\n\n" + "="*50 + "\n\n".join(context_parts)
+                for i, doc in enumerate(retrieved_docs):
+                    source_name = doc.get('source', f'Document_{i+1}')
+                    page_num = doc.get('metadata', {}).get('page', doc.get('page', 'N/A'))
+                    full_content = doc.get('content', '')
+                    
+                    # Include more content per source for comprehensive generation
+                    # Increase content length limit for better context
+                    content_limit = 800  # Increased from 200 for more detailed context
+                    if len(full_content) > content_limit:
+                        content = full_content[:content_limit] + f"... [Content continues in {source_name}]"
+                    else:
+                        content = full_content
+                    
+                    total_content_length += len(content)
+                    
+                    context_parts.append(f"""[Source {i+1}: {source_name}, Page {page_num}]
+{content}
+
+Key Information from {source_name}:
+- Contains {len(full_content)} characters of relevant information
+- Page {page_num} content for "{section_title}"
+""")
+                
+                context_text = f"""
+COMPREHENSIVE SOURCE MATERIAL FOR "{section_title.upper()}"
+Total Sources: {len(retrieved_docs)}
+Total Content Length: {total_content_length} characters
+
+{"="*80}
+
+""" + f"\n\n{'='*80}\n\n".join(context_parts)
+                
+                print(f"📝 Prepared comprehensive context: {len(context_text)} characters from {len(retrieved_docs)} sources")
                 
                 print(f"🤖 Generating LLM response for '{section_title}' with {len(context_text)} chars of context")
                 
