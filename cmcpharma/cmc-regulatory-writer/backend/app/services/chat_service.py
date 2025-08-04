@@ -347,10 +347,11 @@ class ChatService:
             try:
                 print("🔄 Initializing ChatNVIDIA LLM...")
                 self.llm = ChatNVIDIA(
-                    model="meta/llama-4-scout-17b-16e-instruct", 
-                    nvidia_api_key=settings.LLM_API_KEY, 
+                    model="moonshotai/kimi-k2-instruct", 
+                    api_key=settings.LLM_API_KEY, 
                     max_tokens=400,  # Reduced for faster responses
-                    temperature=0.7
+                    temperature=0.6,
+                    top_p=0.9
                 )
                 print("✅ ChatNVIDIA LLM initialized successfully")
             except Exception as e:
@@ -513,10 +514,11 @@ Provide a concise, expert response (max {max_tokens} tokens):"""
                 
                 # Create LLM instance with dynamic parameters for short responses
                 dynamic_llm = ChatNVIDIA(
-                    model="meta/llama-4-scout-17b-16e-instruct", 
-                    nvidia_api_key=settings.LLM_API_KEY, 
+                    model="moonshotai/kimi-k2-instruct", 
+                    api_key=settings.LLM_API_KEY, 
                     max_tokens=max_tokens,
-                    temperature=temperature
+                    temperature=0.6,
+                    top_p=0.9
                 )
                 
                 response = await asyncio.wait_for(
@@ -527,10 +529,11 @@ Provide a concise, expert response (max {max_tokens} tokens):"""
                 print(f"🔄 Using FULL prompt mode for max_tokens={max_tokens}")
                 # Full response mode with detailed prompt and dynamic parameters
                 dynamic_llm = ChatNVIDIA(
-                    model="meta/llama-4-scout-17b-16e-instruct", 
-                    nvidia_api_key=settings.LLM_API_KEY, 
+                    model="moonshotai/kimi-k2-instruct", 
+                    api_key=settings.LLM_API_KEY, 
                     max_tokens=max_tokens,
-                    temperature=temperature
+                    temperature=0.6,
+                    top_p=0.9
                 )
                 
                 response = await asyncio.wait_for(
@@ -795,10 +798,11 @@ RESPONSE GUIDELINES:
                 }
                 
                 payload = {
-                    "model": "meta/llama-4-scout-17b-16e-instruct",
+                    "model": "moonshotai/kimi-k2-instruct",
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 400,  # Reduced for faster responses
-                    "temperature": 0.7,
+                    "temperature": 0.6,
+                    "top_p": 0.9,
                     "stream": True
                 }
                 

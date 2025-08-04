@@ -9,20 +9,35 @@ import uuid
 import asyncio
 import time
 
-# Simplified prompt for faster generation
-FAST_SECTION_PROMPT = """You are an expert technical writer. Write a comprehensive section for "{section_title}" using the provided source content.
+# Enhanced prompt for comprehensive fast generation
+FAST_SECTION_PROMPT = """You are an expert technical writer specializing in regulatory and pharmaceutical documentation. Write a comprehensive, detailed section for "{section_title}" using the provided source content.
 
 Source Content:
 {retrieved_content}
 
-Instructions:
-- Write 400-600 words focused on "{section_title}"
-- Use ONLY information from the source content
-- Include [1], [2], etc. citations for sources
-- Use clear structure with ## headings
-- Be direct and concise
+CONTENT REQUIREMENTS:
+- TARGET LENGTH: 800-1000 words for comprehensive coverage
+- Write detailed, substantive content that fully explores the topic
+- Include specific data, methodologies, and technical details from sources
+- Provide thorough explanations and background context
+- Cover multiple aspects and subtopics mentioned in source material
 
-Write the section:"""
+FORMATTING INSTRUCTIONS:
+- Use clear hierarchical structure with ## main headings, ### subheadings
+- Include detailed bullet points and numbered lists with explanations
+- Use **bold** for key terms and important concepts
+- Include [1], [2], [3] citations throughout for source references
+- Ensure comprehensive paragraph structure (3-4 sentences minimum per paragraph)
+- Add specific quotes and detailed technical specifications when available
+
+STRUCTURE REQUIREMENTS:
+- Start with comprehensive overview paragraph (100+ words)
+- Include 3-4 main subsections with detailed content (200+ words each)
+- Add technical details, procedures, and specifications from sources
+- Include quantitative data and analytical results when available
+- Cross-reference information from multiple sources when relevant
+
+Write a comprehensive, detailed section for "{section_title}":"""
 
 REFINEMENT_PROMPT = """Refine this section based on the feedback:
 
@@ -39,12 +54,13 @@ class GenerationService:
         
         print("🚀 Initializing GenerationService with fast settings...")
         
-        # Use faster settings for quicker responses
+        # Use Moonshot AI Kimi model optimized for comprehensive content generation
         self.llm = ChatNVIDIA(
-            model="meta/llama-4-scout-17b-16e-instruct", 
-            nvidia_api_key=settings.LLM_API_KEY, 
-            max_tokens=1024,  # Reduced for speed
-            temperature=0.5   # Lower for consistency
+            model="moonshotai/kimi-k2-instruct", 
+            api_key=settings.LLM_API_KEY, 
+            max_tokens=4096,  # Increased for comprehensive 1000+ word content
+            temperature=0.5,  # Consistent detailed output
+            top_p=0.85        # Balanced coherence for longer content
         )
         self.citation_service = CitationService()
         self.citation_tracker = CitationTracker(CitationConfig())
@@ -74,10 +90,10 @@ class GenerationService:
                 rag_service.retrieve_relevant_content(
                     query=section_title,
                     file_paths=[],
-                    top_k=5,  # Reduced for speed
+                    top_k=12,  # Increased for comprehensive content generation
                     mode="local"  # Force local mode for speed
                 ),
-                timeout=30.0  # 30 second timeout
+                timeout=45.0  # Extended timeout for more comprehensive retrieval
             )
             
             retrieval_time = time.time() - retrieval_start
@@ -92,14 +108,34 @@ class GenerationService:
                     source_count=0
                 )
             
-            # Prepare context quickly
+            # Prepare comprehensive context for detailed content generation
             context_parts = []
-            for i, doc in enumerate(retrieved_docs[:3]):  # Limit to 3 for speed
-                source_name = doc.get('source', f'Document {i+1}')
-                content = doc.get('content', '')[:800]  # Limit content length
-                context_parts.append(f"[Source {i+1}: {source_name}]\n{content}")
+            total_context_length = 0
             
-            context_text = "\n\n".join(context_parts)
+            for i, doc in enumerate(retrieved_docs[:8]):  # Increased from 3 to 8 for more comprehensive context
+                source_name = doc.get('source', f'Document {i+1}')
+                page_num = doc.get('metadata', {}).get('page', doc.get('page', 'N/A'))
+                full_content = doc.get('content', '')
+                
+                # Increase content length for better context (was 800, now 1200)
+                content_limit = 1200
+                if len(full_content) > content_limit:
+                    content = full_content[:content_limit] + f"... [More content available in {source_name}]"
+                else:
+                    content = full_content
+                
+                total_context_length += len(content)
+                context_parts.append(f"[Source {i+1}: {source_name}, Page {page_num}]\n{content}")
+            
+            context_text = f"""COMPREHENSIVE SOURCE MATERIAL FOR "{section_title.upper()}"
+Total Sources: {len(retrieved_docs)}
+Context Length: {total_context_length} characters
+
+{"="*60}
+
+""" + f"\n\n{'='*60}\n\n".join(context_parts)
+            
+            print(f"📝 Prepared context: {len(context_text)} characters from {len(retrieved_docs)} sources")
             
             # Generate with fast prompt
             generation_start = time.time()
